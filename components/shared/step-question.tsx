@@ -20,7 +20,7 @@ interface Props {
 
 export function StepQuestion({ title, help, progress, onNext, onBack, onSkip, nextLabel = "다음", nextDisabled, busy, children }: Props) {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pb-6 pt-4">
+    <main className="mx-auto flex min-h-app w-full max-w-md flex-col px-5 pb-6 pt-4">
       <div className="flex h-10 items-center gap-3">
         {onBack ? (
           <button type="button" onClick={onBack} aria-label="이전" className="-ml-2 p-2 text-ink">

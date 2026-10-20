@@ -40,7 +40,7 @@ export function ResumeWizard() {
 
   if (loadError) {
     return (
-      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-10">
+      <main className="mx-auto flex min-h-app w-full max-w-md flex-col justify-center px-4 py-10">
         <div className="rounded-card bg-white p-6 text-center shadow-sm">
           <h1 className="text-lg font-bold text-ink">저장된 내용을 불러오지 못했어요</h1>
           <p className="mt-2 text-sm text-muted">네트워크를 확인하고 다시 시도해 주세요.</p>
@@ -53,7 +53,7 @@ export function ResumeWizard() {
   }
 
   if (!loaded) {
-    return <main className="flex min-h-dvh items-center justify-center text-sm text-muted">불러오는 중…</main>;
+    return <main className="flex min-h-app items-center justify-center text-sm text-muted">불러오는 중…</main>;
   }
 
   const step = RESUME_STEPS[index];

@@ -38,7 +38,15 @@ update public.profiles
 where id = (select id from auth.users where email = '관리자@이메일');
 ```
 
-관리자 역할만 더하려면 예전처럼 `update public.profiles set role = 'admin' where …`도 된다(가입 역할은 그대로 남고 admin이 roles에 더해진다).
+역할을 되돌릴 때(예: 강사만 남기기)도 roles와 role을 함께 적는다.
+
+```sql
+update public.profiles
+  set roles = array['instructor'], role = 'instructor'
+where id = (select id from auth.users where email = '관리자@이메일');
+```
+
+`set role = 'admin'`처럼 role만 바꾸면 roles 안의 예전 역할이 새 역할로 **바뀐다**(더해지지 않는다). 가입 유형을 잘못 고른 회원 고치기나 관리자 해제는 이것으로도 된다. 여러 역할을 줄 때는 위처럼 roles를 직접 적는다.
 
 앱 화면에서는 역할을 바꿀 수 없다(트리거가 막는다). 이 구문은 SQL Editor(postgres 권한)에서만 통한다.
 

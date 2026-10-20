@@ -84,34 +84,41 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
--- roles_tamper_blocked: 관리자가 아닌 강사S가 자기 roles에 admin을 넣으면 거부
+-- roles_tamper_blocked: 관리자가 아닌 강사S는 자기 roles를 바꿀 수 없다
+--   admin 넣기, 센터 더하기, 빈 배열, NULL 모두 거부
 -- ---------------------------------------------------------------------
 do $$
 declare
-  v_blocked boolean := false;
+  v_attempt text;
+  v_blocked boolean;
   v_roles text[];
 begin
   set local role authenticated;
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'c0000000-0000-4000-8000-0000000000a3', 'role', 'authenticated')::text, true);
-  begin
-    update public.profiles set roles = array['instructor', 'admin'] where id = 'c0000000-0000-4000-8000-0000000000a3';
-  exception when insufficient_privilege then
-    v_blocked := true;
-  end;
-  -- 역할 하나를 더하는 것도(센터 추가) 막는다
-  if v_blocked then
+  foreach v_attempt in array array['add_admin', 'add_center', 'empty', 'null'] loop
     v_blocked := false;
     begin
-      update public.profiles set roles = array['instructor', 'center'] where id = 'c0000000-0000-4000-8000-0000000000a3';
+      update public.profiles
+        set roles = case v_attempt
+          when 'add_admin' then array['instructor', 'admin']
+          when 'add_center' then array['instructor', 'center']
+          when 'empty' then '{}'::text[]
+          else null::text[]
+        end
+        where id = 'c0000000-0000-4000-8000-0000000000a3';
     exception when insufficient_privilege then
       v_blocked := true;
     end;
-  end if;
+    if not v_blocked then
+      reset role;
+      raise exception 'roles_tamper_blocked 실패 (% 허용됨)', v_attempt;
+    end if;
+  end loop;
   reset role;
 
   select roles into v_roles from public.profiles where id = 'c0000000-0000-4000-8000-0000000000a3';
-  if not v_blocked or v_roles is distinct from array['instructor'] then
+  if v_roles is distinct from array['instructor'] then
     raise exception 'roles_tamper_blocked 실패 (roles %)', v_roles;
   end if;
 end $$;
@@ -194,16 +201,68 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
--- legacy_role_update_adds_role: 예전 방식(role만 바꿈)은 그 역할을 roles에 더한다
+-- legacy_role_update_replaces: role만 바꾸면(postgres 세션) roles 안의 예전 역할이 새 역할로 바뀐다.
+--   강사P {instructor} → set role='admin' → {admin}, 강사P로 부른 is_admin()은 true
 -- ---------------------------------------------------------------------
 do $$
 declare
   v_roles text[];
+  v_admin boolean;
 begin
   update public.profiles set role = 'admin' where id = 'c0000000-0000-4000-8000-0000000000a4';
   select roles into v_roles from public.profiles where id = 'c0000000-0000-4000-8000-0000000000a4';
-  if not ('admin' = any(v_roles) and 'instructor' = any(v_roles)) then
-    raise exception 'legacy_role_update_adds_role 실패 (roles %)', v_roles;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'c0000000-0000-4000-8000-0000000000a4', 'role', 'authenticated')::text, true);
+  v_admin := public.is_admin();
+  reset role;
+
+  if v_roles is distinct from array['admin'] or not v_admin then
+    raise exception 'legacy_role_update_replaces 실패 (roles %, is_admin %)', v_roles, v_admin;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- legacy_role_demote: {instructor, admin} 계정을 set role='instructor'로 바꾸면
+--   roles = {instructor}가 되고 그 계정으로 부른 is_admin()은 false (관리자 해제)
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_roles text[];
+  v_admin boolean;
+begin
+  update public.profiles set roles = array['instructor', 'admin'], role = 'admin'
+  where id = 'c0000000-0000-4000-8000-0000000000a4';
+  update public.profiles set role = 'instructor' where id = 'c0000000-0000-4000-8000-0000000000a4';
+  select roles into v_roles from public.profiles where id = 'c0000000-0000-4000-8000-0000000000a4';
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'c0000000-0000-4000-8000-0000000000a4', 'role', 'authenticated')::text, true);
+  v_admin := public.is_admin();
+  reset role;
+
+  if v_roles is distinct from array['instructor'] or v_admin then
+    raise exception 'legacy_role_demote 실패 (roles %, is_admin %)', v_roles, v_admin;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- roles_no_duplicates: 같은 역할을 두 번 넣을 수 없다(관리자 SQL이라도)
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_blocked boolean := false;
+begin
+  begin
+    update public.profiles set roles = array['instructor', 'instructor'], role = 'instructor'
+    where id = 'c0000000-0000-4000-8000-0000000000a4';
+  exception when check_violation then
+    v_blocked := true;
+  end;
+  if not v_blocked then
+    raise exception 'roles_no_duplicates 실패';
   end if;
 end $$;
 

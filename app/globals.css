@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 앱 화면 최소 높이. 여러 역할 계정의 상단 역할 탭이 보일 때만 --role-tabs-h만큼 줄인다(역할 하나면 100dvh 그대로) */
+@layer utilities {
+  .min-h-app {
+    min-height: calc(100dvh - var(--role-tabs-h, 0px));
+  }
+}
+
 @layer base {
   :root {
     /* 디자인 B안 토큰 */

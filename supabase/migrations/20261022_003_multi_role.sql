@@ -6,7 +6,10 @@
 -- - profiles.roles text[]: 이 계정이 가진 역할 전부. 원소는 instructor·center·admin, 비어 있으면 안 된다.
 -- - profiles.role은 그대로 둔다(대표 역할). 항상 roles 안에 있다.
 --   일반 가입은 지금처럼 역할 하나(roles = {role}). 여러 역할은 관리자 SQL로만 준다(맨 아래).
--- - 예전 방식으로 role만 바꾸면(예: update … set role = 'admin') 그 역할이 roles에 더해진다.
+-- - role만 바꾸면(예: update … set role = 'admin') roles 안의 예전 역할이 새 역할로 바뀐다(더해지지 않는다).
+--   그래서 잘못 고른 가입 유형 고치기·관리자 해제도 role만 바꾸면 된다. roles를 같이 바꾸면 roles 값이 이긴다.
+--   모두 주기: set roles = array['admin','instructor','center'], role = 'admin'
+--   되돌리기: set roles = array['instructor'], role = 'instructor'
 -- - 권한 확인은 전부 roles로 한다: 관리자 = 'admin' = any(roles), 서류 종류는 가진 역할들의 합.
 -- - roles도 role·account_status처럼 관리자·서버만 바꿀 수 있다.
 -- =====================================================================
@@ -17,8 +20,9 @@
 
 alter table public.profiles add column if not exists roles text[] not null default '{}';
 
--- role ↔ roles 맞추기: 비어 있으면 {role}, role만 바뀌면 roles에 더하고,
--- 대표 역할(role)이 roles에 없으면 roles 중 하나(관리자 우선)로 맞춘다.
+-- role ↔ roles 맞추기: 비어 있으면 {role}. role만 바뀌면(roles는 그대로) roles 안의 예전 role을 새 role로
+-- 바꾼다(새 role이 이미 있으면 예전 role만 뺀다). roles를 직접 바꾼 경우는 그 값이 이긴다.
+-- 마지막으로 대표 역할(role)이 roles에 없으면 roles 중 하나(관리자 우선)로 맞춘다.
 -- 특권 컬럼 검사(profiles_guard_privileged)가 이름순으로 먼저 돌기 때문에 사용자 변조는 그쪽에서 막힌다.
 create or replace function public.sync_profile_roles()
 returns trigger
@@ -29,10 +33,14 @@ begin
   if new.roles is null or cardinality(new.roles) = 0 then
     new.roles := array[new.role];
   elsif tg_op = 'UPDATE' then
-    if new.role is distinct from old.role
-       and new.roles is not distinct from old.roles
-       and not (new.role = any(new.roles)) then
-      new.roles := new.roles || new.role;
+    if new.role is distinct from old.role and new.roles is not distinct from old.roles then
+      if new.role = any(new.roles) then
+        new.roles := array_remove(new.roles, old.role);
+      elsif old.role = any(new.roles) then
+        new.roles := array_replace(new.roles, old.role, new.role);
+      else
+        new.roles := new.roles || new.role;
+      end if;
     end if;
   end if;
 
@@ -56,6 +64,14 @@ alter table public.profiles add constraint profiles_roles_valid check (
   cardinality(roles) > 0
   and roles <@ array['instructor', 'center', 'admin']::text[]
   and array_position(roles, null) is null
+);
+
+-- 같은 역할을 두 번 넣지 않는다(원소가 세 가지뿐이라 각각 한 번 이하인지 본다)
+alter table public.profiles drop constraint if exists profiles_roles_unique;
+alter table public.profiles add constraint profiles_roles_unique check (
+  cardinality(array_positions(roles, 'admin')) <= 1
+  and cardinality(array_positions(roles, 'instructor')) <= 1
+  and cardinality(array_positions(roles, 'center')) <= 1
 );
 
 alter table public.profiles drop constraint if exists profiles_role_in_roles;
@@ -212,6 +228,8 @@ create policy documents_insert_own_submitted on public.documents
 -- =====================================================================
 -- [한 번만] 운영자 계정에 관리자·강사·센터 역할 모두 주기
 -- 앱에서 강사나 센터로 먼저 가입한 계정의 이메일로 바꿔, 주석을 풀고 SQL Editor에서 실행한다.
+-- 역할을 되돌릴 때(예: 강사만 남기기)도 roles와 role을 함께 적는다:
+--   update public.profiles set roles = array['instructor'], role = 'instructor' where id = (…);
 -- (postgres 권한이라 특권 컬럼 검사를 통과한다. 앱 화면에서는 역할을 바꿀 수 없다)
 --
 -- update public.profiles

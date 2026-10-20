@@ -46,7 +46,7 @@ docs/           설계·계획·기능 명세
 - 브랜드·색 값 하드코딩 금지. 색은 `app/globals.css`의 B안 토큰(`bg`, `ink`, `accent`, `muted`, `warn`, `ok`)을 쓰고 카드는 `rounded-card`(18px).
 
 ### 멀티 롤
-- `profiles.roles text[]`(가진 역할 전부) + `profiles.role`(대표·가입 역할, 항상 roles 안). 일반 가입은 역할 하나, 여러 역할은 관리자가 SQL로 준다(`supabase/migrations/20261022_003_multi_role.sql` 맨 아래). roles는 관리자·서버만 바꾼다(트리거).
+- `profiles.roles text[]`(가진 역할 전부) + `profiles.role`(대표·가입 역할, 항상 roles 안). 일반 가입은 역할 하나, 여러 역할은 관리자가 SQL로 준다(`supabase/migrations/20261022_003_multi_role.sql` 맨 아래). roles는 관리자·서버만 바꾼다(트리거). role만 바꾸면 roles 안의 예전 역할이 새 역할로 바뀐다(더해지지 않음) — 여러 역할을 줄 땐 roles를 직접 적는다.
 - 권한 확인은 role이 아니라 roles로: SQL은 `admin = any(roles)`(`is_admin()`) / `roles && array[...]`, 앱은 `user.roles.includes(...)`. 서류 종류 구분은 가입 역할이 아니라 `DOC_TYPES[docType].owner`.
 - 보고 있는 역할 화면은 `useAuth().activeRole`(localStorage `aqua.activeRole`, `resolveActiveRole`로 검증, 기본은 관리자 → 가입 역할). 라우팅은 `routeFor(user, introSeen, activeRole)`, 역할이 둘 이상이면 상단 `RoleTabs`.
 

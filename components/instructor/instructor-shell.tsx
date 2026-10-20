@@ -135,7 +135,7 @@ function HomeTab({ onResume }: { onResume: () => void }) {
 export function InstructorShell() {
   const [tab, setTab] = useState<Tab>("home");
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-md">
+    <div className="mx-auto min-h-app w-full max-w-md">
       <main className="px-5 pb-28 pt-8">
         {tab === "home" && <HomeTab onResume={() => setTab("resume")} />}
         {tab === "jobs" && <ComingSoon title="공고" />}

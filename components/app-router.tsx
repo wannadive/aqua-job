@@ -7,7 +7,7 @@ import { SignupSelect } from "@/components/auth/signup-select";
 import { IntroSlides } from "@/components/intro/intro-slides";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { BlockedScreen } from "@/components/shared/blocked-screen";
-import { RoleTabs } from "@/components/shared/role-tabs";
+import { ROLE_TABS_HEIGHT, RoleTabs } from "@/components/shared/role-tabs";
 import { CenterShell } from "@/components/center/center-shell";
 import { InstructorShell } from "@/components/instructor/instructor-shell";
 import { ResumeWizard } from "@/components/instructor/resume-wizard";
@@ -81,7 +81,7 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
   // 여러 역할 계정: 모든 역할 화면 위에 [관리자] [강사] [센터] 탭
   const withRoleTabs = (screen: ReactNode) =>
     user && shownRole && user.roles.length > 1 ? (
-      <>
+      <div style={{ ["--role-tabs-h" as string]: ROLE_TABS_HEIGHT }}>
         <RoleTabs
           roles={user.roles}
           value={shownRole}
@@ -91,7 +91,7 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
           }}
         />
         {screen}
-      </>
+      </div>
     ) : (
       screen
     );

@@ -97,7 +97,7 @@ function SettingsTab() {
 export function AdminShell() {
   const [tab, setTab] = useState<Tab>("review");
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-md">
+    <div className="mx-auto min-h-app w-full max-w-md">
       <main className="px-5 pb-28 pt-8">
         {tab === "review" && <ReviewQueue />}
         {tab === "members" && <MembersTab />}
