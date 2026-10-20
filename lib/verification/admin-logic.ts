@@ -14,12 +14,21 @@ export function latestPendingPerOwnerType<T extends ReviewRow>(rows: T[]): T[] {
   for (const d of rows) {
     const key = `${d.ownerId}\u0000${d.docType}`;
     const cur = latest.get(key);
-    if (!cur || d.submittedAt > cur.submittedAt) latest.set(key, d);
+    if (!cur || compareSubmission(d, cur) > 0) latest.set(key, d);
   }
-  return [...latest.values()]
-    .filter((d) => d.status === "submitted")
-    .sort((a, b) => (a.submittedAt < b.submittedAt ? -1 : a.submittedAt > b.submittedAt ? 1 : 0));
+  return [...latest.values()].filter((d) => d.status === "submitted").sort(compareSubmission);
 }
+
+/** 제출 시각 순, 같으면 id 순(결과가 입력 순서에 따라 달라지지 않게). */
+function compareSubmission(a: ReviewRow, b: ReviewRow): number {
+  if (a.submittedAt !== b.submittedAt) return a.submittedAt < b.submittedAt ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/** 확인 뒤 원본을 지워야 하는 서류 종류(신분증). */
+export const PURGE_DOC_TYPES = (Object.keys(DOC_TYPES) as (keyof typeof DOC_TYPES)[]).filter(
+  (t) => DOC_TYPES[t].deleteOriginalOnVerify,
+);
 
 export type PurgeDecision = "not_found" | "conflict" | "already_purged" | "purge";
 

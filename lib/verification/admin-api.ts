@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { isMissingObjectError, latestPendingPerOwnerType } from "./admin-logic";
+import { isMissingObjectError, latestPendingPerOwnerType, PURGE_DOC_TYPES } from "./admin-logic";
 import { DOC_TYPES } from "./config";
 import { docFromRow } from "./mappers";
 import type { DocRecord } from "./types";
@@ -100,6 +100,7 @@ export async function purgeOriginal(docId: string): Promise<{ error?: string }> 
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ docId }),
     });
+    if (res.status === 503) return { error: "서버가 저장소에 연결하지 못했어요. 잠시 후 다시 시도해 주세요" };
     if (!res.ok) return { error: "원본 사진을 지우지 못했어요" };
     return {};
   } catch {
@@ -114,6 +115,8 @@ export async function purgeOriginal(docId: string): Promise<{ error?: string }> 
 export async function reviewDocument(input: {
   docId: string;
   decision: "verified" | "rejected";
+  /** 화면이 이미 알고 있는 서류 종류. 신분증이면 확인 뒤 원본을 지운다. */
+  docType: DocRecord["docType"];
   validUntil?: string;
   reason?: string;
 }): Promise<{ error?: string; purgeFailed?: boolean }> {
@@ -132,16 +135,28 @@ export async function reviewDocument(input: {
     return { error: "네트워크 연결을 확인해 주세요" };
   }
 
-  if (input.decision !== "verified") return {};
-  const failed = { error: "확인은 됐지만 원본 사진을 지우지 못했어요", purgeFailed: true };
-  try {
-    const { data, error } = await createClient().from("documents").select("doc_type").eq("id", input.docId).maybeSingle();
-    if (error || !data) return failed;
-    const docType = (data as { doc_type: DocRecord["docType"] }).doc_type;
-    if (!DOC_TYPES[docType]?.deleteOriginalOnVerify) return {};
-  } catch {
-    return failed;
-  }
+  if (input.decision !== "verified" || !DOC_TYPES[input.docType].deleteOriginalOnVerify) return {};
   const purge = await purgeOriginal(input.docId);
-  return purge.error ? failed : {};
+  return purge.error ? { error: "확인은 됐지만 원본 사진을 지우지 못했어요", purgeFailed: true } : {};
+}
+
+export type PendingPurge = { id: string; docType: DocRecord["docType"]; ownerName: string; verifiedAt: string | null };
+
+/** 확인은 끝났지만 원본(신분증) 사진이 아직 남아 있는 서류. 오류는 던진다. */
+export async function fetchPendingPurges(): Promise<PendingPurge[]> {
+  const sb = createClient();
+  const { data, error } = await sb
+    .from("documents")
+    .select("id, owner_id, doc_type, verified_at")
+    .eq("status", "verified")
+    .in("doc_type", PURGE_DOC_TYPES)
+    .not("file_path", "is", null)
+    .order("verified_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as { id: string; owner_id: string; doc_type: DocRecord["docType"]; verified_at: string | null }[];
+  if (rows.length === 0) return [];
+  const owners = await sb.from("profiles").select("id, display_name").in("id", [...new Set(rows.map((r) => r.owner_id))]);
+  if (owners.error) throw new Error(owners.error.message);
+  const names = new Map((owners.data ?? []).map((p: { id: string; display_name: string }) => [p.id, p.display_name] as const));
+  return rows.map((r) => ({ id: r.id, docType: r.doc_type, ownerName: names.get(r.owner_id) ?? "(이름 없음)", verifiedAt: r.verified_at }));
 }

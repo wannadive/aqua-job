@@ -33,6 +33,11 @@ export async function POST(req: Request) {
     const sb = createAdminClient();
 
     const { data: userData, error: userError } = await sb.auth.getUser(token);
+    // 서버가 Supabase에 닿지 못한 경우(네트워크·TLS)는 토큰 문제가 아니므로 401로 숨기지 않는다.
+    if (userError && (userError.name === "AuthRetryableFetchError" || !userError.status)) {
+      console.error("[purge-original] auth server unreachable");
+      return json(503, { error: "upstream_unavailable" });
+    }
     if (userError || !userData.user) return json(401, { error: "unauthorized" });
 
     const { data: profile, error: profileError } = await sb

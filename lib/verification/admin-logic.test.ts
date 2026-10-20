@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isMissingObjectError, kstDate, latestPendingPerOwnerType, purgeDecision } from "./admin-logic.ts";
+import { isMissingObjectError, kstDate, latestPendingPerOwnerType, PURGE_DOC_TYPES, purgeDecision } from "./admin-logic.ts";
 
 type Row = { id: string; ownerId: string; docType: string; status: "submitted" | "verified" | "rejected"; submittedAt: string };
 const r = (id: string, ownerId: string, docType: string, status: Row["status"], submittedAt: string): Row => ({ id, ownerId, docType, status, submittedAt });
@@ -53,4 +53,17 @@ test("isMissingObjectError: Storage의 '파일 없음' 오류만 골라낸다", 
 test("kstDate: 한국 날짜로 표시", () => {
   assert.equal(kstDate("2026-10-21T14:59:59Z"), "2026.10.21");
   assert.equal(kstDate("2026-10-21T15:00:00Z"), "2026.10.22");
+});
+
+test("latestPendingPerOwnerType: 제출 시각이 같으면 id가 큰 쪽을 최신으로(입력 순서와 무관)", () => {
+  const a = r("id-a", "u1", "id_card", "submitted", "2026-10-01T00:00:00Z");
+  const b = r("id-b", "u1", "id_card", "submitted", "2026-10-01T00:00:00Z");
+  assert.deepEqual(latestPendingPerOwnerType([a, b]).map((d) => d.id), ["id-b"]);
+  assert.deepEqual(latestPendingPerOwnerType([b, a]).map((d) => d.id), ["id-b"]);
+  const c = r("id-c", "u2", "id_card", "submitted", "2026-10-01T00:00:00Z");
+  assert.deepEqual(latestPendingPerOwnerType([c, b]).map((d) => d.id), ["id-b", "id-c"]);
+});
+
+test("PURGE_DOC_TYPES: 신분증 두 종류만", () => {
+  assert.deepEqual([...PURGE_DOC_TYPES].sort(), ["id_card", "representative_id"]);
 });

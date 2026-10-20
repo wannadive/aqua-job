@@ -76,7 +76,7 @@ export function ReviewDetail({ item, onBack }: { item: ReviewItem; onBack: () =>
     }
     setBusy(true);
     try {
-      const res = await reviewDocument({ docId: item.id, decision: "verified", validUntil: cfg.hasExpiry ? validUntil : undefined });
+      const res = await reviewDocument({ docId: item.id, docType: item.docType, decision: "verified", validUntil: cfg.hasExpiry ? validUntil : undefined });
       if (res.purgeFailed) {
         toast.error(res.error ?? "원본 사진을 지우지 못했어요");
         setPurgePending(true);
@@ -102,7 +102,7 @@ export function ReviewDetail({ item, onBack }: { item: ReviewItem; onBack: () =>
     }
     setBusy(true);
     try {
-      const res = await reviewDocument({ docId: item.id, decision: "rejected", reason: reason.trim() });
+      const res = await reviewDocument({ docId: item.id, docType: item.docType, decision: "rejected", reason: reason.trim() });
       if (res.error) {
         toast.error(res.error);
         if (res.error === "이미 처리된 서류예요") reload();
