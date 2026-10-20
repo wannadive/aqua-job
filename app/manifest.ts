@@ -11,7 +11,11 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#0E2235",
     background_color: "#F4F8FB",
     lang: "ko",
-    // 임시 아이콘(물결 SVG) — 이후 PNG로 교체
-    icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" }],
+    // 물결 표시. PNG는 public/icon.svg에서 scripts/gen-icons.mjs로 만든다.
+    icons: [
+      { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
+    ],
   };
 }

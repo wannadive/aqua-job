@@ -67,5 +67,6 @@ pnpm build
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>   # 서버 전용, NEXT_PUBLIC_ 금지
 ```
-(`.env.local.example` 참고, `.env*`는 커밋 금지)
+(`.env.local.example` 참고. 세 값 모두 Vercel의 Production·Preview 둘 다에 넣는다. `.env.local.example` 외의 `.env*`는 커밋 금지)
