@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
 import { docFromRow } from "./mappers";
-import { compressImage } from "@/lib/image";
 import type { DocRecord, DocType } from "./types";
 
 /** 내가 낸 서류 전부(최신순). 오류는 던진다. */
@@ -19,7 +18,7 @@ export async function fetchMyDocuments(): Promise<DocRecord[]> {
 
 const EXT_BY_TYPE: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
 
-/** 서류 사진을 비공개 버킷에 올리고 documents에 '확인 대기'로 제출한다. insert가 실패하면 올린 파일을 지운다. */
+/** 서류 사진(호출자가 이미 압축한 File)을 비공개 버킷에 올리고 documents에 '확인 대기'로 제출한다. insert가 실패하면 올린 파일을 지운다. */
 export async function submitDocument(input: {
   docType: DocType;
   file: File;
@@ -31,10 +30,9 @@ export async function submitDocument(input: {
     const { data: s } = await sb.auth.getSession();
     const uid = s.session?.user.id;
     if (!uid) return { error: "로그인이 필요해요" };
-    const small = await compressImage(input.file);
-    const ext = EXT_BY_TYPE[small.type] ?? "jpg";
+    const ext = EXT_BY_TYPE[input.file.type] ?? "jpg";
     path = `${uid}/${crypto.randomUUID()}.${ext}`;
-    const up = await sb.storage.from("documents").upload(path, small, { contentType: small.type || "image/jpeg" });
+    const up = await sb.storage.from("documents").upload(path, input.file, { contentType: input.file.type || "image/jpeg" });
     if (up.error) return { error: "사진을 올리지 못했어요. 잠시 후 다시 시도해 주세요" };
     const meta = Object.fromEntries(Object.entries(input.meta ?? {}).filter(([, v]) => typeof v === "string" && v.trim() !== ""));
     const { error } = await (sb as any)

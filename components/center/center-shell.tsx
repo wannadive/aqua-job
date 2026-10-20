@@ -62,7 +62,7 @@ function HomeTab({ onSubmitDocs }: { onSubmitDocs: () => void }) {
   };
   const bizBody: Partial<Record<DocDisplayStatus, string>> = {
     missing: "사업자등록증이 확인되면 공고를 올리고 강사에게 제안할 수 있어요",
-    submitted: "제출한 서류를 확인하고 있어요. 확인이 끝나면 알려 드릴게요",
+    submitted: "제출한 서류를 확인하고 있어요. 확인이 끝나면 이 화면에 표시돼요",
     rejected: "서류를 다시 올려 주세요",
     expired: "서류를 다시 올려 주세요",
   };

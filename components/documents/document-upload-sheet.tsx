@@ -58,7 +58,7 @@ export function DocumentUploadSheet({
   const pick = async (f: File | undefined) => {
     if (!f) return;
     try {
-      setFile(await compressImage(f));
+      setFile(await compressImage(f, 2000));
     } catch {
       toast.error("사진을 읽지 못했어요. 다른 사진으로 시도해 주세요");
     }
@@ -79,7 +79,7 @@ export function DocumentUploadSheet({
         toast.error(res.error);
         return;
       }
-      toast.success("서류를 제출했어요. 확인이 끝나면 알려 드릴게요");
+      toast.success("서류를 제출했어요. 확인이 끝나면 여기에 표시돼요");
       onOpenChange(false);
       onSubmitted();
     } finally {

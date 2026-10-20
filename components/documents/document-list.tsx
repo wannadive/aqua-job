@@ -77,7 +77,7 @@ export function DocumentList({ owner }: { owner: "instructor" | "center" }) {
                   </div>
                 )}
                 {st === "rejected" && d?.rejectReason && <p className="mt-2 text-sm text-destructive">반려 사유: {d.rejectReason}</p>}
-                {(st === "missing" || st === "rejected" || st === "expiring" || st === "expired") && (
+                {st !== "verified" && (
                   <Button variant="outline" className="mt-3 h-11 w-full bg-white" onClick={() => start(t)}>
                     {st === "missing" ? "제출하기" : "다시 올리기"}
                   </Button>
