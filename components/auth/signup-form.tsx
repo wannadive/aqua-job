@@ -63,9 +63,22 @@ export function SignupForm({ role, onBack }: { role: SignupInput["role"]; onBack
             <Label htmlFor="password">비밀번호 (6자 이상)</Label>
             <Input id="password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
-          <div className="flex items-center gap-2">
-            <Checkbox id="agree" checked={agreed} onCheckedChange={(v) => setAgreed(v === true)} />
-            <Label htmlFor="agree" className="text-sm">이용약관과 개인정보 처리에 동의해요 (필수)</Label>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Checkbox id="agree" checked={agreed} onCheckedChange={(v) => setAgreed(v === true)} />
+              <Label htmlFor="agree" className="text-sm">이용약관과 개인정보 처리에 동의해요 (필수)</Label>
+            </div>
+            {/* 새 탭으로 열어 적던 가입 내용이 사라지지 않게 한다 */}
+            <p className="pl-6 text-xs text-muted">
+              <a href="/terms" target="_blank" rel="noopener" className="underline">
+                이용약관
+              </a>
+              {" · "}
+              <a href="/privacy" target="_blank" rel="noopener" className="underline">
+                개인정보처리방침
+              </a>{" "}
+              보기
+            </p>
           </div>
           <Button type="submit" className="w-full" disabled={busy}>
             {busy ? "가입 중…" : "가입하기"}
