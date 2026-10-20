@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { StepQuestion } from "@/components/shared/step-question";
+import { Button } from "@/components/ui/button";
 import { fetchMyInstructorProfile, saveInstructorProfile } from "@/lib/instructor/api";
 import { RESUME_STEPS } from "@/lib/instructor/logic";
 import { useAuth } from "@/lib/supabase/auth-provider";
@@ -13,20 +14,43 @@ export function ResumeWizard() {
   const [index, setIndex] = useState(0);
   const [draft, setDraftState] = useState<Draft>({});
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
 
+  // 불러오기에 실패하면 빈 칸으로 이어 가지 않는다(저장된 답을 빈 값으로 덮어쓰는 것을 막는다).
   useEffect(() => {
     let cancelled = false;
+    setLoadError(false);
     fetchMyInstructorProfile()
       .then((p) => {
-        if (!cancelled && p) setDraftState(p);
+        if (cancelled) return;
+        if (p) setDraftState(p);
+        setLoaded(true);
       })
-      .catch(() => toast.error("저장된 내용을 불러오지 못했어요"))
-      .finally(() => !cancelled && setLoaded(true));
+      .catch(() => {
+        if (cancelled) return;
+        toast.error("저장된 내용을 불러오지 못했어요");
+        setLoadError(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
+
+  if (loadError) {
+    return (
+      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-10">
+        <div className="rounded-card bg-white p-6 text-center shadow-sm">
+          <h1 className="text-lg font-bold text-ink">저장된 내용을 불러오지 못했어요</h1>
+          <p className="mt-2 text-sm text-muted">네트워크를 확인하고 다시 시도해 주세요.</p>
+          <Button className="mt-5 h-[52px] w-full bg-ink text-base text-white" onClick={() => setAttempt((n) => n + 1)}>
+            다시 시도
+          </Button>
+        </div>
+      </main>
+    );
+  }
 
   if (!loaded) {
     return <main className="flex min-h-dvh items-center justify-center text-sm text-muted">불러오는 중…</main>;

@@ -185,7 +185,11 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       const { data } = await supabase.auth.getSession();
       const id = data.session?.user.id;
       if (!id) {
+        // 세션이 없으면 로그인 화면으로. 오류 표시도 지워야 다시 시도 화면에 갇히지 않는다.
+        requestRef.current++;
+        userIdRef.current = null;
         setUser(null);
+        setLoadError(false);
         return;
       }
       const ok = await loadAccount(id);

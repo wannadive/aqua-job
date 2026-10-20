@@ -14,6 +14,8 @@ export const viewport: Viewport = {
   themeColor: "#0E2235",
   width: "device-width",
   initialScale: 1,
+  // 아이폰 노치·홈 바 영역까지 그려야 env(safe-area-inset-*)가 값을 가진다
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -34,7 +34,7 @@ function writeIntroSeen() {
 }
 
 export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
-  const { user, isLoading, loadError, refreshAccount } = useAuth();
+  const { user, isLoading, loadError, refreshAccount, logout } = useAuth();
   const [introSeen, setIntroSeen] = useState(false);
   const [ready, setReady] = useState(false);
   const [authView, setAuthView] = useState<"login" | "signup-select" | "signup">("login");
@@ -57,6 +57,9 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
           <p className="mt-2 text-sm text-muted">네트워크를 확인하고 다시 시도해 주세요.</p>
           <Button className="mt-6 w-full" onClick={() => void refreshAccount()}>
             다시 시도
+          </Button>
+          <Button variant="outline" className="mt-2 w-full" onClick={() => void logout()}>
+            로그아웃
           </Button>
         </div>
       </main>
