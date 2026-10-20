@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +13,7 @@ export function LoginForm({ onSignup, isAdminEntry }: { onSignup?: () => void; i
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [keepLogin, setKeepLogin] = useState(true);
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
@@ -21,7 +23,7 @@ export function LoginForm({ onSignup, isAdminEntry }: { onSignup?: () => void; i
       return;
     }
     setBusy(true);
-    const res = await login(email, password);
+    const res = await login(email, password, keepLogin);
     setBusy(false);
     if (res.error) {
       toast.error(res.error);
@@ -43,6 +45,10 @@ export function LoginForm({ onSignup, isAdminEntry }: { onSignup?: () => void; i
             <Label htmlFor="password">비밀번호</Label>
             <Input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
+          <label htmlFor="keep-login" className="-mx-2 flex min-h-11 cursor-pointer items-center gap-3 px-2 text-sm text-ink">
+            <Checkbox id="keep-login" checked={keepLogin} onCheckedChange={(v) => setKeepLogin(v === true)} className="h-6 w-6 rounded-md" />
+            로그인 유지
+          </label>
           <Button type="submit" className="w-full" disabled={busy}>
             {busy ? "로그인 중…" : "로그인"}
           </Button>

@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { createClient } from "./client";
+import { createClient, setKeepLogin } from "./client";
 import { readActiveRole, writeActiveRole } from "@/lib/account/active-role";
 import { normalizeRoles, resolveActiveRole } from "@/lib/account/logic";
 import type { Account, AccountRole, AccountStatus, SignupInput } from "@/lib/account/types";
@@ -15,7 +15,7 @@ interface AuthContextType {
   /** 지금 보고 있는 역할 화면(여러 역할 계정은 상단 탭으로 바꾼다). 로그인 전에는 null */
   activeRole: AccountRole | null;
   setActiveRole(role: AccountRole): void;
-  login(email: string, password: string): Promise<{ error?: string }>;
+  login(email: string, password: string, keepLogin?: boolean): Promise<{ error?: string }>;
   signup(input: SignupInput): Promise<{ error?: string }>;
   logout(): Promise<void>;
   refreshAccount(): Promise<void>;
@@ -165,7 +165,8 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
   }, [supabase, loadAccount]);
 
   const login = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string, keepLogin: boolean = true) => {
+      setKeepLogin(keepLogin); // 반드시 로그인 호출보다 먼저
       const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (error) return { error: friendlyError(error.message) };
       return {};
@@ -175,6 +176,7 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
 
   const signup = useCallback(
     async (input: SignupInput) => {
+      setKeepLogin(true); // 가입은 기본값(로그인 유지)
       const { data, error } = await supabase.auth.signUp({
         email: input.email.trim(),
         password: input.password,
