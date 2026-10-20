@@ -15,3 +15,8 @@ test("도입부 문구는 스펙과 같다", () => {
   assert.equal(INTRO_FINAL.signup, "아직 계정이 없으신가요? 회원가입하기");
   assert.equal(`${INTRO_FINAL.terms} · ${INTRO_FINAL.privacy}`, "이용약관 · 개인정보처리방침");
 });
+
+test("화면 표시용 분리 문구가 합성 문구와 같다", () => {
+  assert.equal(`${INTRO_FINAL.noAccount} ${INTRO_FINAL.signupLink}`, INTRO_FINAL.signup);
+  assert.equal(INTRO_FINAL.title, "AQUA JOB");
+});
