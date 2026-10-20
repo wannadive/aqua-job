@@ -12,4 +12,6 @@ test("routeFor", () => {
   assert.equal(routeFor(a({ onboardingDone: false }), true), "instructor-onboarding");
   assert.equal(routeFor(a({ role: "center", onboardingDone: false }), true), "center");
   assert.equal(routeFor(a({ role: "admin" }), true), "admin");
+  assert.equal(routeFor(a({ role: "admin", accountStatus: "banned" }), true), "blocked");
+  assert.equal(routeFor(a({}), true), "instructor");
 });

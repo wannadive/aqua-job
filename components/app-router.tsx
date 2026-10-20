@@ -47,7 +47,7 @@ function Shell({ title, desc }: { title: string; desc: string }) {
 }
 
 export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, loadError, refreshAccount } = useAuth();
   const [introSeen, setIntroSeen] = useState(false);
   const [ready, setReady] = useState(false);
   const [authView, setAuthView] = useState<"login" | "signup-select" | "signup">("login");
@@ -60,6 +60,20 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
 
   if (isLoading || !ready) {
     return <main className="flex min-h-dvh items-center justify-center text-sm text-muted">불러오는 중…</main>;
+  }
+
+  if (loadError && !user) {
+    return (
+      <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-10">
+        <div className="rounded-card bg-white p-6 shadow-sm">
+          <h1 className="text-xl font-bold text-ink">계정 정보를 불러오지 못했어요</h1>
+          <p className="mt-2 text-sm text-muted">네트워크를 확인하고 다시 시도해 주세요.</p>
+          <Button className="mt-6 w-full" onClick={() => void refreshAccount()}>
+            다시 시도
+          </Button>
+        </div>
+      </main>
+    );
   }
 
   // /admin 주소는 도입부 없이 곧바로 로그인 화면
