@@ -6,6 +6,8 @@ import { SignupForm } from "@/components/auth/signup-form";
 import { SignupSelect } from "@/components/auth/signup-select";
 import { IntroSlides } from "@/components/intro/intro-slides";
 import { BlockedScreen } from "@/components/shared/blocked-screen";
+import { InstructorShell } from "@/components/instructor/instructor-shell";
+import { ResumeWizard } from "@/components/instructor/resume-wizard";
 import { Button } from "@/components/ui/button";
 import { routeFor } from "@/lib/account/logic";
 import type { SignupInput } from "@/lib/account/types";
@@ -107,9 +109,9 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     case "blocked":
       return <BlockedScreen />;
     case "instructor-onboarding":
-      return <Shell title="강사 프로필 만들기" desc="곧 열려요" />;
+      return <ResumeWizard />;
     case "instructor":
-      return <Shell title="강사 홈" desc="곧 열려요" />;
+      return <InstructorShell />;
     case "center":
       return <Shell title="센터 홈" desc="곧 열려요" />;
     case "admin":
