@@ -37,7 +37,7 @@
 1. **다른 사람의 연락처나 서류 원본을 읽으려는 요청.** 다른 강사, 센터, 로그인하지 않은 사람이 시도하면 RLS가 빈 결과나 거부를 돌려줘야 한다. → Task 3 SQL 검사 `rls_contacts_hidden`, `rls_documents_private`
 2. **유효기간이 오늘인 서류와 어제 만료된 서류.** 오늘까지는 유효, 어제 만료는 "만료됨", 30일 이내는 "곧 만료". 시간대 때문에 하루 밀리면 안 된다. → Task 2 `displayStatus 경계` 테스트
 3. **반려 후 다시 제출.** 같은 종류 서류를 새로 올리면 새 제출 건이 "확인 대기"가 되고 반려 기록은 남는다. 강사 화면에는 최신 건만 보인다. → Task 2 `latestByType` 테스트, Task 3 SQL `resubmit_after_reject`
-4. **정지·퇴출된 계정이 로그인한 경우.** 앱 진입 즉시 안내 화면이 뜨고 아무 데이터도 쓸 수 없어야 한다. → Task 3 SQL `banned_cannot_write`, Task 4 테스트 `routeFor banned`
+4. **정지·퇴출된 계정이 로그인한 경우.** 앱 진입 즉시 안내 화면이 뜨고 아무 데이터도 쓸 수 없어야 한다. → Task 3 SQL `banned_cannot_write`, Task 4 테스트 `routeFor banned` (최종 리뷰 보강: 마이그레이션 `20261022_002_hardening.sql` — 이름·연락처 수정, 서류 원본 삭제도 활성 계정만, 서류 등록은 사진 필수·가입 유형에 맞는 종류만 → `supabase/test/phase1_hardening_checks.sql`)
 5. **관리자가 아닌 사람이 서류 확인 RPC를 호출.** 거부해야 한다. → Task 3 SQL `review_requires_admin`
 
 ---

@@ -2,18 +2,25 @@
 
 Supabase 대시보드 → **SQL Editor**에서 아래 순서로 실행한다.
 
-## 1. 마이그레이션 적용
+## 1. 마이그레이션 적용 (번호 순서대로)
 
-`supabase/migrations/20261021_001_foundation.sql` 내용을 통째로 붙여 넣고 **Run**.
+1. `supabase/migrations/20261021_001_foundation.sql` — 기반 스키마
+2. `supabase/migrations/20261022_002_hardening.sql` — 정지·퇴출 계정의 쓰기 차단, 서류 등록 조건 강화
+
+각 파일 내용을 통째로 붙여 넣고 **Run**. 반드시 001 → 002 순서로 실행한다.
 여러 번 실행해도 괜찮다(이미 있는 테이블·정책은 건너뛰거나 다시 만든다).
 
-## 2. 보안 검사
+## 2. 보안 검사 (002까지 적용한 뒤)
 
-`supabase/test/phase1_checks.sql` 내용을 통째로 붙여 넣고 **Run**.
+1. `supabase/test/phase1_checks.sql` → 성공하면 `phase1 ok`
+2. `supabase/test/phase1_hardening_checks.sql` → 성공하면 `hardening ok`
 
-- **성공**: 결과 표에 `phase1 ok` 한 줄이 나온다.
-- **실패**: `rls_contacts_hidden 실패`처럼 검사 이름이 들어간 오류가 나온다. 그 오류 메시지를 그대로 복사해서 알려 주면 된다.
+각 파일 내용을 통째로 붙여 넣고 **Run**.
+
+- **성공**: 결과 표에 위의 한 줄이 나온다.
+- **실패**: `rls_contacts_hidden 실패`, `banned_cannot_update_contacts 실패`처럼 검사 이름이 들어간 오류가 나온다. 그 오류 메시지를 그대로 복사해서 알려 주면 된다.
 - 검사는 `begin … rollback` 안에서 돌기 때문에 테스트 계정·서류가 남지 않는다.
+- 보강 검사는 002가 적용되지 않았으면 실패한다(예: `banned_cannot_update_profile_name 실패`).
 
 ## 3. 관리자 지정 (한 번만)
 
