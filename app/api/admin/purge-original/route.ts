@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { purgeDecision } from "@/lib/verification/admin-logic";
+import { isSuperseded, purgeDecision } from "@/lib/verification/admin-logic";
+import type { DocType } from "@/lib/verification/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +13,8 @@ function json(status: number, body: Record<string, unknown>) {
 }
 
 /**
- * 확인된 신분증의 원본 사진을 지운다.
+ * 신분증의 원본 사진을 지운다. 대상: 확인됨·반려됨, 또는 확인 대기지만 같은 사람이 같은 종류를 더 최근에 다시 올려
+ * 밀려난 건. "밀려났는지"는 브라우저 말을 믿지 않고 여기서 DB를 보고 판단한다.
  * 요청자의 access token(Authorization: Bearer)으로 활성 관리자인지 확인한 뒤 service role로 Storage 객체를 지우고
  * documents.file_path를 null로 바꾼다. 이미 비어 있으면 그대로 성공(여러 번 불러도 같은 결과).
  * 응답·로그에 파일 경로나 키를 남기지 않는다.
@@ -27,6 +29,12 @@ export async function POST(req: Request) {
     docId = ((await req.json()) as { docId?: unknown })?.docId;
   } catch {
     docId = undefined;
+  }
+
+  // 키 값은 남기지 않고, 설정이 빠졌다는 사실만 따로 남긴다(배포 환경 변수 누락을 바로 알아보게).
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    console.error("[purge-original] service role not configured");
+    return json(500, { error: "server_error" });
   }
 
   try {
@@ -53,13 +61,35 @@ export async function POST(req: Request) {
 
     const { data: row, error: docError } = await sb
       .from("documents")
-      .select("status, doc_type, file_path")
+      .select("id, owner_id, status, doc_type, file_path, submitted_at")
       .eq("id", docId)
       .maybeSingle();
     if (docError) return json(500, { error: "server_error" });
-    const doc = row as { status: string; doc_type: string; file_path: string | null } | null;
+    const doc = row as
+      | { id: string; owner_id: string; status: string; doc_type: string; file_path: string | null; submitted_at: string }
+      | null;
 
-    const decision = purgeDecision(doc && { status: doc.status, docType: doc.doc_type, filePath: doc.file_path });
+    // 확인 대기 건이면 같은 사람·같은 종류에 더 최근 제출이 있는지 직접 본다.
+    let superseded = false;
+    if (doc && doc.status === "submitted") {
+      const { data: sibs, error: sibError } = await sb
+        .from("documents")
+        .select("id, owner_id, doc_type, submitted_at")
+        .eq("owner_id", doc.owner_id)
+        .eq("doc_type", doc.doc_type as DocType);
+      if (sibError) return json(500, { error: "server_error" });
+      superseded = isSuperseded(
+        { id: doc.id, ownerId: doc.owner_id, docType: doc.doc_type, submittedAt: doc.submitted_at },
+        ((sibs ?? []) as { id: string; owner_id: string; doc_type: string; submitted_at: string }[]).map((r) => ({
+          id: r.id,
+          ownerId: r.owner_id,
+          docType: r.doc_type,
+          submittedAt: r.submitted_at,
+        })),
+      );
+    }
+
+    const decision = purgeDecision(doc && { status: doc.status, docType: doc.doc_type, filePath: doc.file_path }, { superseded });
     if (decision === "not_found") return json(404, { error: "not_found" });
     if (decision === "conflict") return json(409, { error: "conflict" });
     if (decision === "already_purged") return json(200, { ok: true });

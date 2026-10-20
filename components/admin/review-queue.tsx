@@ -10,9 +10,15 @@ import { kstDate, ROLE_LABEL } from "@/lib/verification/admin-logic";
 import { ReviewDetail } from "./review-detail";
 
 /**
- * 확인은 끝났는데 원본(신분증) 사진 삭제가 실패해 남아 있는 서류.
+ * 원본(신분증) 사진이 아직 남아 있는 서류: 확인·반려 뒤 삭제가 실패했거나, 같은 사람이 새로 올려 밀려난 건.
  * 목록을 불러올 때마다 한 번씩 자동으로 다시 지워 보고, 그래도 남은 건은 직접 다시 시도할 수 있게 보여 준다.
  */
+const PURGE_REASON_LABEL: Record<PendingPurge["reason"], string> = {
+  verified: "확인",
+  rejected: "반려",
+  superseded: "새로 올림 · 이전 제출",
+};
+
 function PendingPurges({ attempt }: { attempt: number }) {
   const [rows, setRows] = useState<PendingPurge[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -62,7 +68,7 @@ function PendingPurges({ attempt }: { attempt: number }) {
   return (
     <section className="rounded-card bg-warn-bg p-5">
       <h2 className="text-base font-bold text-warn">원본 삭제 대기 {rows.length}건</h2>
-      <p className="mt-1 text-sm text-warn">확인은 끝났지만 신분증 원본 사진이 아직 남아 있어요.</p>
+      <p className="mt-1 text-sm text-warn">처리가 끝났거나 새로 올려 밀려난 신분증 원본 사진이 아직 남아 있어요.</p>
       <ul className="mt-3 space-y-2">
         {rows.map((r) => (
           <li key={r.id} className="flex items-center gap-3 rounded-xl bg-white p-3">
@@ -70,7 +76,8 @@ function PendingPurges({ attempt }: { attempt: number }) {
               <div className="truncate text-sm font-semibold text-ink">{r.ownerName}</div>
               <div className="text-xs text-muted">
                 {DOC_TYPES[r.docType].label}
-                {r.verifiedAt ? ` · 확인 ${kstDate(r.verifiedAt)}` : ""}
+                {` · ${PURGE_REASON_LABEL[r.reason]}`}
+                {r.at ? ` ${kstDate(r.at)}` : ""}
               </div>
             </div>
             <Button variant="outline" className="h-10 shrink-0" disabled={busyId !== null} onClick={() => void retry(r.id)}>

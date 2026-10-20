@@ -393,6 +393,7 @@ test("resumeCompleteness: 필수 항목만 센다", () => {
   - `fetchReviewQueue(): Promise<(DocRecord & { ownerName: string; ownerRole: "instructor" | "center" })[]>`(status='submitted', 오래된 순)
   - `reviewDocument(input: { docId: string; decision: "verified" | "rejected"; validUntil?: string; reason?: string }): Promise<{ error?: string }>`. RPC를 호출하고, verified이면서 `deleteOriginalOnVerify`면 `POST /api/admin/purge-original { docId }`도 호출한다.
   - `POST /api/admin/purge-original`: 요청자의 JWT로 관리자 여부를 확인한 뒤, service role로 Storage 객체를 지우고 `documents.file_path = null`로 만든다.
+  - (최종 리뷰 보강) 신분증은 반려해도 원본을 바로 지운다. 같은 사람이 같은 종류를 다시 올려 밀려난 "확인 대기" 신분증도 지운다(밀려났는지는 API가 DB를 보고 판단). `fetchPendingPurges`는 확인·반려됐거나 밀려났는데 원본이 남은 신분증을 모두 보여 주고, 관리자 목록을 열 때마다 자동으로 다시 지운다. `SUPABASE_SERVICE_ROLE_KEY`가 없으면 API는 `service role not configured`를 로그에 남기고 500.
 
 - [ ] **Step 1:** 관리자 셸을 만든다. 탭은 서류 확인 / 회원(1단계는 목록만) / 설정이다. 카드 구성은 v0 "가입 승인 관리"를 따른다: 이름·유형·서류 종류·제출일.
 - [ ] **Step 2:** 상세 화면을 만든다. 서류 이미지는 signed URL(60초)로 보여준다. 자격증이면 단체·등급·번호를 보여주고 고칠 수 있게 하며, 유효기간 날짜를 입력받는다. 버튼은 [확인] / [반려 → 사유 입력(필수)]이고, 반려 사유는 빠른 선택(사진 흐림, 이름 불일치, 기간 만료, 다른 서류) + 자유 입력이다.

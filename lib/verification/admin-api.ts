@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { isMissingObjectError, latestPendingPerOwnerType, PURGE_DOC_TYPES } from "./admin-logic";
+import { isMissingObjectError, isSuperseded, latestPendingPerOwnerType, PURGE_DOC_TYPES } from "./admin-logic";
 import { DOC_TYPES } from "./config";
 import { docFromRow } from "./mappers";
 import type { DocRecord } from "./types";
@@ -89,7 +89,7 @@ const RPC_ERRORS: { match: RegExp; message: string }[] = [
   { match: /찾을 수 없/, message: "서류를 찾을 수 없어요" },
 ];
 
-/** 확인된 신분증 원본을 서버에서 지운다. 실패하면 error를 준다. */
+/** 신분증 원본을 서버에서 지운다(확인·반려됐거나 새로 올려 밀려난 건). 실패하면 error를 준다. */
 export async function purgeOriginal(docId: string): Promise<{ error?: string }> {
   try {
     const { data: s } = await createClient().auth.getSession();
@@ -109,13 +109,13 @@ export async function purgeOriginal(docId: string): Promise<{ error?: string }> 
 }
 
 /**
- * 확인/반려. 확인이면서 원본 삭제 대상(신분증)이면 원본도 지운다.
- * purgeFailed: 확인은 끝났지만 원본 삭제만 실패한 경우(다시 시도는 purgeOriginal).
+ * 확인/반려. 원본 삭제 대상(신분증)이면 확인이든 반려든 처리 직후 원본도 지운다.
+ * purgeFailed: 확인·반려는 끝났지만 원본 삭제만 실패한 경우(다시 시도는 purgeOriginal).
  */
 export async function reviewDocument(input: {
   docId: string;
   decision: "verified" | "rejected";
-  /** 화면이 이미 알고 있는 서류 종류. 신분증이면 확인 뒤 원본을 지운다. */
+  /** 화면이 이미 알고 있는 서류 종류. 신분증이면 확인·반려 뒤 원본을 지운다. */
   docType: DocRecord["docType"];
   validUntil?: string;
   reason?: string;
@@ -135,28 +135,83 @@ export async function reviewDocument(input: {
     return { error: "네트워크 연결을 확인해 주세요" };
   }
 
-  if (input.decision !== "verified" || !DOC_TYPES[input.docType].deleteOriginalOnVerify) return {};
+  if (!DOC_TYPES[input.docType].deleteOriginalOnVerify) return {};
   const purge = await purgeOriginal(input.docId);
-  return purge.error ? { error: "확인은 됐지만 원본 사진을 지우지 못했어요", purgeFailed: true } : {};
+  if (!purge.error) return {};
+  const done = input.decision === "verified" ? "확인은" : "반려는";
+  return { error: `${done} 됐지만 원본 사진을 지우지 못했어요`, purgeFailed: true };
 }
 
-export type PendingPurge = { id: string; docType: DocRecord["docType"]; ownerName: string; verifiedAt: string | null };
+export type PendingPurge = {
+  id: string;
+  docType: DocRecord["docType"];
+  ownerName: string;
+  /** 왜 지워야 하는지: 확인됨·반려됨·새로 올려 밀려남 */
+  reason: "verified" | "rejected" | "superseded";
+  /** 확인 시각, 밀려난 건은 제출 시각(반려 시각은 따로 저장하지 않아 null) */
+  at: string | null;
+};
 
-/** 확인은 끝났지만 원본(신분증) 사진이 아직 남아 있는 서류. 오류는 던진다. */
+type PurgeRow = {
+  id: string;
+  owner_id: string;
+  doc_type: DocRecord["docType"];
+  status: "submitted" | "verified" | "rejected";
+  submitted_at: string;
+  verified_at: string | null;
+};
+
+/**
+ * 원본(신분증) 사진이 아직 남아 있어 지워야 하는 서류. 오류는 던진다.
+ * - 확인됨·반려됨인데 원본이 남은 건
+ * - 확인 대기지만 같은 사람이 같은 종류를 더 최근에 다시 올려 밀려난 건
+ * 최종 판단은 삭제 API가 서버에서 다시 한다.
+ */
 export async function fetchPendingPurges(): Promise<PendingPurge[]> {
   const sb = createClient();
   const { data, error } = await sb
     .from("documents")
-    .select("id, owner_id, doc_type, verified_at")
-    .eq("status", "verified")
+    .select("id, owner_id, doc_type, status, submitted_at, verified_at")
     .in("doc_type", PURGE_DOC_TYPES)
     .not("file_path", "is", null)
-    .order("verified_at", { ascending: true });
+    .order("submitted_at", { ascending: true });
   if (error) throw new Error(error.message);
-  const rows = (data ?? []) as { id: string; owner_id: string; doc_type: DocRecord["docType"]; verified_at: string | null }[];
+  const rows = (data ?? []) as PurgeRow[];
   if (rows.length === 0) return [];
-  const owners = await sb.from("profiles").select("id, display_name").in("id", [...new Set(rows.map((r) => r.owner_id))]);
+
+  // 확인 대기 건이 밀려났는지 보려면 같은 사람의 신분증 제출 전부(원본이 지워진 건 포함)가 필요하다.
+  const pendingOwners = [...new Set(rows.filter((r) => r.status === "submitted").map((r) => r.owner_id))];
+  let siblings: { id: string; ownerId: string; docType: string; submittedAt: string }[] = [];
+  if (pendingOwners.length > 0) {
+    const sib = await sb
+      .from("documents")
+      .select("id, owner_id, doc_type, submitted_at")
+      .in("owner_id", pendingOwners)
+      .in("doc_type", PURGE_DOC_TYPES);
+    if (sib.error) throw new Error(sib.error.message);
+    siblings = ((sib.data ?? []) as { id: string; owner_id: string; doc_type: string; submitted_at: string }[]).map((r) => ({
+      id: r.id,
+      ownerId: r.owner_id,
+      docType: r.doc_type,
+      submittedAt: r.submitted_at,
+    }));
+  }
+
+  const targets = rows.filter(
+    (r) =>
+      r.status !== "submitted" ||
+      isSuperseded({ id: r.id, ownerId: r.owner_id, docType: r.doc_type, submittedAt: r.submitted_at }, siblings),
+  );
+  if (targets.length === 0) return [];
+
+  const owners = await sb.from("profiles").select("id, display_name").in("id", [...new Set(targets.map((r) => r.owner_id))]);
   if (owners.error) throw new Error(owners.error.message);
   const names = new Map((owners.data ?? []).map((p: { id: string; display_name: string }) => [p.id, p.display_name] as const));
-  return rows.map((r) => ({ id: r.id, docType: r.doc_type, ownerName: names.get(r.owner_id) ?? "(이름 없음)", verifiedAt: r.verified_at }));
+  return targets.map((r) => ({
+    id: r.id,
+    docType: r.doc_type,
+    ownerName: names.get(r.owner_id) ?? "(이름 없음)",
+    reason: r.status === "submitted" ? "superseded" : r.status,
+    at: r.status === "verified" ? r.verified_at : r.status === "submitted" ? r.submitted_at : null,
+  }));
 }

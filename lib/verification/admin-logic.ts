@@ -32,13 +32,40 @@ export const PURGE_DOC_TYPES = (Object.keys(DOC_TYPES) as (keyof typeof DOC_TYPE
 
 export type PurgeDecision = "not_found" | "conflict" | "already_purged" | "purge";
 
-/** 원본 삭제 요청을 어떻게 처리할지. 확인됨 + 원본 삭제 대상 종류일 때만 지운다. */
-export function purgeDecision(doc: { status: string; docType: string; filePath: string | null } | null): PurgeDecision {
+/**
+ * 원본 삭제 요청을 어떻게 처리할지. 원본 삭제 대상 종류(신분증)이면서
+ * 확인됨·반려됨이거나, 확인 대기지만 같은 사람이 같은 종류를 더 최근에 다시 올린 건(superseded)일 때만 지운다.
+ * superseded는 호출하는 쪽(서버)이 DB를 직접 보고 판단해 넘긴다(브라우저 말을 믿지 않는다).
+ */
+export function purgeDecision(
+  doc: { status: string; docType: string; filePath: string | null } | null,
+  opts: { superseded?: boolean } = {},
+): PurgeDecision {
   if (!doc) return "not_found";
   const cfg = (DOC_TYPES as Record<string, { deleteOriginalOnVerify: boolean } | undefined>)[doc.docType];
-  if (doc.status !== "verified" || !cfg?.deleteOriginalOnVerify) return "conflict";
+  if (!cfg?.deleteOriginalOnVerify) return "conflict";
+  const finished = doc.status === "verified" || doc.status === "rejected";
+  const replaced = doc.status === "submitted" && opts.superseded === true;
+  if (!finished && !replaced) return "conflict";
   if (!doc.filePath) return "already_purged";
   return "purge";
+}
+
+/**
+ * doc보다 나중에 낸 같은 사람·같은 종류 서류가 있는지(제출 시각 순, 같으면 id 순 — 대기열과 같은 기준).
+ * siblings에는 doc 자신이 들어 있어도 된다.
+ */
+export function isSuperseded(
+  doc: { id: string; ownerId: string; docType: string; submittedAt: string },
+  siblings: { id: string; ownerId: string; docType: string; submittedAt: string }[],
+): boolean {
+  return siblings.some(
+    (s) =>
+      s.id !== doc.id &&
+      s.ownerId === doc.ownerId &&
+      s.docType === doc.docType &&
+      (s.submittedAt > doc.submittedAt || (s.submittedAt === doc.submittedAt && s.id > doc.id)),
+  );
 }
 
 /** Storage 오류가 "파일이 없음"인지(본인이 확인 전에 지운 경우 등). */

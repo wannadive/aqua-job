@@ -46,7 +46,8 @@ export function ReviewDetail({ item, onBack }: { item: ReviewItem; onBack: () =>
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
-  const [purgePending, setPurgePending] = useState(false);
+  /** 확인·반려는 끝났는데 원본 삭제만 실패한 경우, 어느 쪽이었는지 */
+  const [purgePending, setPurgePending] = useState<"verified" | "rejected" | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,7 +80,7 @@ export function ReviewDetail({ item, onBack }: { item: ReviewItem; onBack: () =>
       const res = await reviewDocument({ docId: item.id, docType: item.docType, decision: "verified", validUntil: cfg.hasExpiry ? validUntil : undefined });
       if (res.purgeFailed) {
         toast.error(res.error ?? "원본 사진을 지우지 못했어요");
-        setPurgePending(true);
+        setPurgePending("verified");
         return;
       }
       if (res.error) {
@@ -103,12 +104,17 @@ export function ReviewDetail({ item, onBack }: { item: ReviewItem; onBack: () =>
     setBusy(true);
     try {
       const res = await reviewDocument({ docId: item.id, docType: item.docType, decision: "rejected", reason: reason.trim() });
+      if (res.purgeFailed) {
+        toast.error(res.error ?? "원본 사진을 지우지 못했어요");
+        setPurgePending("rejected");
+        return;
+      }
       if (res.error) {
         toast.error(res.error);
         if (res.error === "이미 처리된 서류예요") reload();
         return;
       }
-      toast.success("반려했어요");
+      toast.success(cfg.deleteOriginalOnVerify ? "반려했어요. 원본 사진은 삭제했어요" : "반려했어요");
       onBack();
     } finally {
       setBusy(false);
@@ -135,7 +141,7 @@ export function ReviewDetail({ item, onBack }: { item: ReviewItem; onBack: () =>
   if (purgePending) {
     body = (
       <div className="rounded-card bg-white p-6 text-center shadow-sm">
-        <h2 className="text-lg font-bold text-ink">확인은 끝났어요</h2>
+        <h2 className="text-lg font-bold text-ink">{purgePending === "verified" ? "확인은 끝났어요" : "반려는 끝났어요"}</h2>
         <p className="mt-2 text-sm text-muted">원본 사진을 아직 지우지 못했어요. 다시 시도해 주세요.</p>
         <Button className="mt-5 h-12 w-full" disabled={busy} onClick={() => void retryPurge()}>
           원본 사진 삭제 다시 시도
@@ -254,7 +260,7 @@ export function ReviewDetail({ item, onBack }: { item: ReviewItem; onBack: () =>
               </div>
             )}
             {cfg.deleteOriginalOnVerify && !fileMissing && (
-              <p className="mb-4 text-sm text-muted">확인하면 원본 사진은 바로 삭제돼요.</p>
+              <p className="mb-4 text-sm text-muted">확인하거나 반려하면 원본 사진은 바로 삭제돼요.</p>
             )}
             <div className="grid grid-cols-2 gap-2">
               <Button variant="outline" className="h-12" disabled={busy} onClick={() => setRejecting(true)}>
