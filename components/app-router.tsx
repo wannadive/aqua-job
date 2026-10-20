@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { LoginForm } from "@/components/auth/login-form";
 import { SignupForm } from "@/components/auth/signup-form";
 import { SignupSelect } from "@/components/auth/signup-select";
+import { IntroSlides } from "@/components/intro/intro-slides";
 import { BlockedScreen } from "@/components/shared/blocked-screen";
 import { Button } from "@/components/ui/button";
-import { BRAND } from "@/lib/brand";
 import { routeFor } from "@/lib/account/logic";
 import type { SignupInput } from "@/lib/account/types";
 import { useAuth } from "@/lib/supabase/auth-provider";
@@ -81,23 +81,14 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
 
   switch (route) {
     case "intro":
-      // Task 5에서 IntroSlides로 교체
       return (
-        <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-10">
-          <div className="rounded-card bg-white p-6 shadow-sm">
-            <h1 className="text-2xl font-bold tracking-tight text-ink">{BRAND.appName}</h1>
-            <p className="mt-1 text-sm text-muted">{BRAND.tagline}</p>
-            <Button
-              className="mt-6 w-full"
-              onClick={() => {
-                writeIntroSeen();
-                setIntroSeen(true);
-              }}
-            >
-              시작하기
-            </Button>
-          </div>
-        </main>
+        <IntroSlides
+          onFinish={(choice) => {
+            writeIntroSeen();
+            setIntroSeen(true);
+            setAuthView(choice === "signup" ? "signup-select" : "login");
+          }}
+        />
       );
     case "login":
       if (adminEntry) return <LoginForm isAdminEntry />;
