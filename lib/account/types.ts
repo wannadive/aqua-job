@@ -3,7 +3,10 @@ export type AccountStatus = "active" | "suspended" | "banned";
 
 export interface Account {
   id: string;
+  /** 대표 역할(가입 역할) */
   role: AccountRole;
+  /** 이 계정이 가진 역할 전부. 항상 role을 포함하고 비어 있지 않다 */
+  roles: AccountRole[];
   displayName: string;
   accountStatus: AccountStatus;
   onboardingDone: boolean;

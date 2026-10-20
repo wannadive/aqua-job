@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { normalizeRoles } from "@/lib/account/logic";
+import type { AccountRole } from "@/lib/account/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isSuperseded, purgeDecision } from "@/lib/verification/admin-logic";
 import type { DocType } from "@/lib/verification/types";
@@ -50,12 +52,15 @@ export async function POST(req: Request) {
 
     const { data: profile, error: profileError } = await sb
       .from("profiles")
-      .select("role, account_status")
+      // roles(003)가 없는 DB에서도 동작하도록 * 로 읽는다. 관리자 = roles에 admin이 있음
+      .select("*")
       .eq("id", userData.user.id)
       .maybeSingle();
     if (profileError) return json(500, { error: "server_error" });
-    const p = profile as { role: string; account_status: string } | null;
-    if (!p || p.role !== "admin" || p.account_status !== "active") return json(403, { error: "forbidden" });
+    const p = profile as { role: AccountRole; roles?: unknown; account_status: string } | null;
+    if (!p || !normalizeRoles(p.roles, p.role).includes("admin") || p.account_status !== "active") {
+      return json(403, { error: "forbidden" });
+    }
 
     if (typeof docId !== "string" || !UUID_RE.test(docId)) return json(400, { error: "bad_request" });
 

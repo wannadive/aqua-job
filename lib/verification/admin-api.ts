@@ -21,20 +21,21 @@ export async function fetchReviewQueue(): Promise<ReviewItem[]> {
   // 같은 사람의 처리된 건까지 받아야 "더 최근 건이 이미 처리돼 밀려난 대기 건"을 가려낼 수 있다.
   const [docsRes, ownersRes] = await Promise.all([
     sb.from("documents").select(DOC_COLUMNS).in("owner_id", ownerIds),
-    sb.from("profiles").select("id, display_name, role").in("id", ownerIds),
+    sb.from("profiles").select("id, display_name").in("id", ownerIds),
   ]);
   if (docsRes.error) throw new Error(docsRes.error.message);
   if (ownersRes.error) throw new Error(ownersRes.error.message);
 
   const owners = new Map(
-    (ownersRes.data ?? []).map((p: { id: string; display_name: string; role: string }) => [p.id, p] as const),
+    (ownersRes.data ?? []).map((p: { id: string; display_name: string }) => [p.id, p] as const),
   );
   return latestPendingPerOwnerType((docsRes.data ?? []).map(docFromRow)).map((d) => {
     const o = owners.get(d.ownerId);
     return {
       ...d,
       ownerName: o?.display_name ?? "(이름 없음)",
-      ownerRole: o?.role === "center" ? "center" : "instructor",
+      // 여러 역할 계정도 있으니 가입 역할이 아니라 서류 종류로 강사용·센터용을 나눈다
+      ownerRole: DOC_TYPES[d.docType].owner,
     };
   });
 }

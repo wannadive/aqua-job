@@ -8,6 +8,7 @@ import { fetchMyInstructorProfile } from "@/lib/instructor/api";
 import { resumeCompleteness } from "@/lib/instructor/logic";
 import type { InstructorProfile } from "@/lib/instructor/types";
 import { fetchMyDocuments } from "@/lib/verification/api";
+import { DOC_TYPES } from "@/lib/verification/config";
 import { displayStatus, latestByType, todayKst } from "@/lib/verification/logic";
 import { useAuth } from "@/lib/supabase/auth-provider";
 import { ResumeEditor } from "./resume-editor";
@@ -48,7 +49,8 @@ function HomeTab({ onResume }: { onResume: () => void }) {
         const today = todayKst();
         // attention = 반려 + 만료. 곧 만료는 확인됨에 세고 따로 안내한다.
         const out = { submitted: 0, verified: 0, expiring: 0, attention: 0 };
-        for (const d of Object.values(latestByType(list))) {
+        // 강사·센터 역할을 함께 가진 계정은 센터 서류도 있으니 강사 서류만 센다
+        for (const d of Object.values(latestByType(list.filter((x) => DOC_TYPES[x.docType].owner === "instructor")))) {
           const st = displayStatus(d, today);
           if (st === "submitted") out.submitted++;
           else if (st === "rejected" || st === "expired") out.attention++;

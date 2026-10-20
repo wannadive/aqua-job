@@ -27,7 +27,7 @@
 - 브랜드 값은 `lib/brand.ts`에서만 읽는다(하드코딩 금지).
 - Supabase 브라우저 클라이언트는 `@supabase/supabase-js`의 `createClient`를 쓴다(`createBrowserClient` 금지). 워너다이브 `lib/supabase/client.ts` 방식(fetch 15초 타임아웃, lock 우회, 싱글턴)을 그대로 쓴다.
 - mutation 호출에는 반드시 `await`를 붙이고, 에러가 나면 `toast.error` 후 early return 한다.
-- 계정 하나에 역할 하나: `instructor` | `center` | `admin`
+- 역할: `instructor` | `center` | `admin` (Task 9b부터 한 계정 여러 역할 가능: `profiles.roles`, 상단 역할 탭)
 - 연락처(휴대폰·이메일)는 `private_contacts` 테이블에만 둔다. 1단계에서는 본인과 관리자만 읽을 수 있다.
 - 서류 원본은 Storage 비공개 버킷 `documents`에 둔다. 본인과 관리자만 읽을 수 있다. 신분증(`id_card`, `representative_id`)은 확인하면 원본을 삭제한다.
 - 모바일 웹 기준이다(iOS Safari·Chrome, Android Chrome).

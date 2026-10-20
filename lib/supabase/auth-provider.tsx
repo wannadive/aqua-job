@@ -3,6 +3,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { createClient } from "./client";
+import { readActiveRole, writeActiveRole } from "@/lib/account/active-role";
+import { normalizeRoles, resolveActiveRole } from "@/lib/account/logic";
 import type { Account, AccountRole, AccountStatus, SignupInput } from "@/lib/account/types";
 
 interface AuthContextType {
@@ -10,6 +12,9 @@ interface AuthContextType {
   isLoading: boolean;
   /** 계정 정보 조회 실패(일시 오류). user가 없으면 화면에서 다시 시도 버튼을 보여준다 */
   loadError: boolean;
+  /** 지금 보고 있는 역할 화면(여러 역할 계정은 상단 탭으로 바꾼다). 로그인 전에는 null */
+  activeRole: AccountRole | null;
+  setActiveRole(role: AccountRole): void;
   login(email: string, password: string): Promise<{ error?: string }>;
   signup(input: SignupInput): Promise<{ error?: string }>;
   logout(): Promise<void>;
@@ -39,6 +44,8 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Account | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  // 기기에 저장된 마지막 선택(검증 전 값). 실제 역할은 resolveActiveRole로 계정 역할 안에서 고른다.
+  const [storedRole, setStoredRole] = useState<string | null>(null);
   const userIdRef = useRef<string | null>(null);
   const requestRef = useRef(0);
 
@@ -47,14 +54,16 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
     async (userId: string): Promise<{ ok: true; account: Account | null } | { ok: false }> => {
       const { data: p, error } = await supabase
         .from("profiles")
-        .select("id, role, display_name, account_status")
+        // roles 컬럼(003)이 아직 없는 DB에서도 열리도록 * 로 읽고 [role]로 대신한다
+        .select("*")
         .eq("id", userId)
         .maybeSingle();
       if (error) return { ok: false };
       if (!p) return { ok: true, account: null };
       const role = p.role as AccountRole;
+      const roles = normalizeRoles((p as { roles?: unknown }).roles, role);
       let onboardingDone = true;
-      if (role === "instructor") {
+      if (roles.includes("instructor")) {
         const { data: ip, error: ipError } = await supabase
           .from("instructor_profiles")
           .select("onboarding_done")
@@ -68,6 +77,7 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
         account: {
           id: p.id,
           role,
+          roles,
           displayName: p.display_name,
           accountStatus: p.account_status as AccountStatus,
           onboardingDone,
@@ -99,6 +109,17 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
     },
     [fetchAccount],
   );
+
+  useEffect(() => {
+    setStoredRole(readActiveRole());
+  }, []);
+
+  const setActiveRole = useCallback((role: AccountRole) => {
+    setStoredRole(role);
+    writeActiveRole(role);
+  }, []);
+
+  const activeRole = user ? resolveActiveRole(user, storedRole) : null;
 
   useEffect(() => {
     let settled = false;
@@ -200,7 +221,7 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
   }, [supabase, loadAccount]);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, loadError, login, signup, logout, refreshAccount }}>
+    <AuthContext.Provider value={{ user, isLoading, loadError, activeRole, setActiveRole, login, signup, logout, refreshAccount }}>
       {children}
     </AuthContext.Provider>
   );

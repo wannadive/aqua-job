@@ -1,18 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { LoginForm } from "@/components/auth/login-form";
 import { SignupForm } from "@/components/auth/signup-form";
 import { SignupSelect } from "@/components/auth/signup-select";
 import { IntroSlides } from "@/components/intro/intro-slides";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { BlockedScreen } from "@/components/shared/blocked-screen";
+import { RoleTabs } from "@/components/shared/role-tabs";
 import { CenterShell } from "@/components/center/center-shell";
 import { InstructorShell } from "@/components/instructor/instructor-shell";
 import { ResumeWizard } from "@/components/instructor/resume-wizard";
 import { Button } from "@/components/ui/button";
 import { routeFor } from "@/lib/account/logic";
-import type { SignupInput } from "@/lib/account/types";
+import type { AccountRole, SignupInput } from "@/lib/account/types";
 import { useAuth } from "@/lib/supabase/auth-provider";
 
 const INTRO_KEY = "aqua.introSeen";
@@ -34,11 +35,19 @@ function writeIntroSeen() {
 }
 
 export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
-  const { user, isLoading, loadError, refreshAccount, logout } = useAuth();
+  const { user, isLoading, loadError, refreshAccount, logout, activeRole, setActiveRole } = useAuth();
   const [introSeen, setIntroSeen] = useState(false);
   const [ready, setReady] = useState(false);
   const [authView, setAuthView] = useState<"login" | "signup-select" | "signup">("login");
   const [signupRole, setSignupRole] = useState<SignupInput["role"]>("instructor");
+  // /admin 주소로 들어오면 관리자 역할이 있는 계정은 관리자 화면부터(탭을 누르기 전까지)
+  const [adminPinned, setAdminPinned] = useState(adminEntry);
+  const hasAdmin = !!user?.roles.includes("admin");
+  const shownRole: AccountRole | null = adminPinned && hasAdmin ? "admin" : activeRole;
+
+  useEffect(() => {
+    if (adminPinned && hasAdmin && activeRole !== "admin") setActiveRole("admin");
+  }, [adminPinned, hasAdmin, activeRole, setActiveRole]);
 
   useEffect(() => {
     setIntroSeen(readIntroSeen());
@@ -67,7 +76,25 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
   }
 
   // /admin 주소는 도입부 없이 곧바로 로그인 화면
-  const route = routeFor(user, introSeen || adminEntry);
+  const route = routeFor(user, introSeen || adminEntry, shownRole);
+
+  // 여러 역할 계정: 모든 역할 화면 위에 [관리자] [강사] [센터] 탭
+  const withRoleTabs = (screen: ReactNode) =>
+    user && shownRole && user.roles.length > 1 ? (
+      <>
+        <RoleTabs
+          roles={user.roles}
+          value={shownRole}
+          onChange={(r) => {
+            setAdminPinned(false);
+            setActiveRole(r);
+          }}
+        />
+        {screen}
+      </>
+    ) : (
+      screen
+    );
 
   switch (route) {
     case "intro":
@@ -97,12 +124,12 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     case "blocked":
       return <BlockedScreen />;
     case "instructor-onboarding":
-      return <ResumeWizard />;
+      return withRoleTabs(<ResumeWizard />);
     case "instructor":
-      return <InstructorShell />;
+      return withRoleTabs(<InstructorShell />);
     case "center":
-      return <CenterShell />;
+      return withRoleTabs(<CenterShell />);
     case "admin":
-      return <AdminShell />;
+      return withRoleTabs(<AdminShell />);
   }
 }

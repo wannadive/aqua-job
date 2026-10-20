@@ -63,7 +63,9 @@ function MembersTab() {
                 <div className="truncate text-base font-semibold text-ink">{m.displayName}</div>
                 <div className="mt-0.5 text-xs text-muted">가입 {kstDate(m.createdAt)}</div>
               </div>
-              <span className="shrink-0 rounded-full bg-surface px-2.5 py-0.5 text-xs font-semibold text-muted">{ROLE_LABEL[m.role]}</span>
+              <span className="shrink-0 rounded-full bg-surface px-2.5 py-0.5 text-xs font-semibold text-muted">
+                {m.roles.map((r) => ROLE_LABEL[r]).join("·")}
+              </span>
               <span
                 className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${m.accountStatus === "active" ? "bg-ok-bg text-ok" : "bg-warn-bg text-warn"}`}
               >
