@@ -29,3 +29,15 @@ where id = (select id from auth.users where email = '관리자@이메일');
 > **관리자 계정은 반드시 앱 가입 화면에서 만든다.** 가입 트리거는 가입 유형(강사/센터) 정보가 없는 계정을 거부한다. 그래서 Supabase 대시보드의 "Add user", 초대 메일(invite), 소셜 로그인(OAuth)으로는 계정이 만들어지지 않는다("Database error saving new user"). 앱에서 강사나 센터로 가입한 뒤 위 UPDATE로 관리자로 바꾼다.
 
 > 운영 데이터가 생긴 뒤에는 이 폴더의 검사를 실행할 때 주의한다. 검사는 되돌리지만, 실행 중에는 테스트 계정이 잠깐 만들어진다.
+
+## 테스트 계정 (개발/테스트 전용)
+
+Task 4 가입 흐름 확인용으로 실제 프로젝트에 만든 가짜 계정이다. 운영 전에 Authentication → Users에서 삭제한다.
+
+| 역할 | 이메일 | 비밀번호 |
+|------|--------|----------|
+| 강사 | test-instructor-1@aquajob.test | .env.local 의 TEST_ACCOUNT_PASSWORD |
+| 센터 | test-center-1@aquajob.test | .env.local 의 TEST_ACCOUNT_PASSWORD |
+
+- 강사는 `instructor_profiles` 행이 아직 없어 `onboardingDone=false` → 온보딩 화면으로 분기한다.
+- 센터는 센터 홈으로 분기한다.
