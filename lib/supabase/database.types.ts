@@ -1,4 +1,4 @@
-// 손으로 쓴 DB 타입 (supabase/migrations/20261021_001_foundation.sql 기준).
+// 손으로 쓴 DB 타입 (supabase/migrations/ 001 기반 스키마 + 003 여러 역할 기준).
 // 스키마를 바꾸면 여기도 같이 고친다.
 
 export type Json =
@@ -29,7 +29,10 @@ export interface Database {
       profiles: {
         Row: {
           id: string;
+          /** 대표 역할(가입 역할). 항상 roles 안에 있다 */
           role: UserRole;
+          /** 이 계정이 가진 역할 전부(003). 비어 있지 않다 */
+          roles: UserRole[];
           display_name: string;
           account_status: AccountStatus;
           center_id: string | null;
@@ -40,16 +43,18 @@ export interface Database {
         Insert: {
           id: string;
           role: UserRole;
+          roles?: UserRole[];
           display_name: string;
           account_status?: AccountStatus;
           center_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
-        // role·account_status·center_id는 트리거가 막는다(관리자·서버만)
+        // role·roles·account_status·center_id는 트리거가 막는다(관리자·서버만)
         Update: {
           id?: string;
           role?: UserRole;
+          roles?: UserRole[];
           display_name?: string;
           account_status?: AccountStatus;
           center_id?: string | null;
