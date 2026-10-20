@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { Briefcase, FileText, Home, Inbox, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { fetchMyDocSummary, fetchMyInstructorProfile } from "@/lib/instructor/api";
+import { fetchMyInstructorProfile } from "@/lib/instructor/api";
 import { resumeCompleteness } from "@/lib/instructor/logic";
 import type { InstructorProfile } from "@/lib/instructor/types";
+import { fetchMyDocuments } from "@/lib/verification/api";
+import { displayStatus, latestByType } from "@/lib/verification/logic";
 import { useAuth } from "@/lib/supabase/auth-provider";
 import { ResumeEditor } from "./resume-editor";
 
@@ -36,7 +38,18 @@ function HomeTab({ onResume }: { onResume: () => void }) {
   useEffect(() => {
     let cancelled = false;
     fetchMyInstructorProfile().then((p) => !cancelled && setProfile(p)).catch(() => {});
-    fetchMyDocSummary().then((d) => !cancelled && setDocs(d)).catch(() => {});
+    fetchMyDocuments().then((list) => {
+      if (cancelled) return;
+      const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+      const out = { submitted: 0, verified: 0, rejected: 0 };
+      for (const d of Object.values(latestByType(list))) {
+        const st = displayStatus(d, today);
+        if (st === "submitted") out.submitted++;
+        else if (st === "rejected") out.rejected++;
+        else if (st === "verified" || st === "expiring") out.verified++;
+      }
+      setDocs(out);
+    }).catch(() => {});
     return () => {
       cancelled = true;
     };

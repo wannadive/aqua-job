@@ -5,7 +5,7 @@ import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { avatarUrl, uploadAvatar } from "@/lib/instructor/api";
+import { avatarUrl, uploadAvatar } from "@/lib/storage/avatars";
 import {
   AGE_BAND_OPTIONS, CERT_ORG_OPTIONS, DAY_OPTIONS, GENDER_OPTIONS, MBTI_OPTIONS,
   REGION_OPTIONS, SCOPE_OPTIONS, STYLE_TAG_OPTIONS, TIME_OPTIONS,

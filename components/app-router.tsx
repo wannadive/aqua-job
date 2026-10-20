@@ -6,6 +6,7 @@ import { SignupForm } from "@/components/auth/signup-form";
 import { SignupSelect } from "@/components/auth/signup-select";
 import { IntroSlides } from "@/components/intro/intro-slides";
 import { BlockedScreen } from "@/components/shared/blocked-screen";
+import { CenterShell } from "@/components/center/center-shell";
 import { InstructorShell } from "@/components/instructor/instructor-shell";
 import { ResumeWizard } from "@/components/instructor/resume-wizard";
 import { Button } from "@/components/ui/button";
@@ -113,7 +114,7 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     case "instructor":
       return <InstructorShell />;
     case "center":
-      return <Shell title="센터 홈" desc="곧 열려요" />;
+      return <CenterShell />;
     case "admin":
       return <Shell title="관리자" desc="곧 열려요" />;
   }
