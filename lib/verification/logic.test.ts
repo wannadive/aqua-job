@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { DOC_TYPES } from "./config.ts";
 import { displayStatus, latestByType, factLabel, missingRequirements } from "./logic.ts";
-import type { DocRecord } from "./types.ts";
+import type { DocRecord, DocType, DocReviewStatus } from "./types.ts";
 
 function mk(over: Partial<DocRecord> = {}): DocRecord {
   return {
@@ -18,7 +19,7 @@ function mk(over: Partial<DocRecord> = {}): DocRecord {
   };
 }
 
-test("displayStatus 경계: 오늘 만료일은 유효, 어제는 만료, 30일 이내는 곧 만료", () => {
+test("displayStatus 경계: 오늘 만료일은 곧 만료(아직 만료 아님), 어제는 만료, 30일 이내는 곧 만료", () => {
   const base = { id: "1", ownerId: "u", docType: "instructor_cert", status: "verified", meta: {}, rejectReason: null, submittedAt: "2026-01-01", verifiedAt: "2026-01-02" } as const;
   assert.equal(displayStatus({ ...base, validUntil: "2026-10-21" }, "2026-10-21"), "expiring");
   assert.equal(displayStatus({ ...base, validUntil: "2026-10-20" }, "2026-10-21"), "expired");
@@ -49,4 +50,37 @@ test("factLabel: 사실만, 보증 표현 없음", () => {
 test("missingRequirements: 확인된 서류에 없는 요건만", () => {
   assert.deepEqual(missingRequirements(["business_registration"], ["business_registration", "travel_business"]), ["travel_business"]);
   assert.deepEqual(missingRequirements([], []), []);
+});
+
+test("factLabel: 자격증 머리말 규칙", () => {
+  const v = { status: "verified" as const, validUntil: "2027-03-31" };
+  const today = "2026-10-21";
+  assert.equal(factLabel(mk({ ...v, docType: "instructor_cert", meta: { org: "AIDA" } }), today), "AIDA 강사 자격증 · 2027.03까지");
+  assert.equal(factLabel(mk({ ...v, docType: "rep_instructor_cert", meta: { org: "AIDA", grade: "강사" } }), today), "대표강사 AIDA 강사 자격증 · 2027.03까지");
+  for (const type of Object.keys(DOC_TYPES) as DocType[]) {
+    assert.equal(factLabel(mk({ docType: type, status: "verified", validUntil: null }), today), `${DOC_TYPES[type].label} · 확인됨`);
+  }
+});
+
+test("factLabel: 확인 대기·반려됨 표시", () => {
+  const today = "2026-10-21";
+  assert.equal(factLabel(mk({ docType: "id_card", status: "submitted" }), today), "신분증 · 확인 대기");
+  assert.equal(factLabel(mk({ docType: "id_card", status: "rejected" }), today), "신분증 · 반려됨");
+});
+
+test("중립 원칙: 모든 표시 문구에 보증 표현 없음", () => {
+  const banned = /검증|보증|인증됨|추천/;
+  const today = "2026-10-21";
+  const statuses: DocReviewStatus[] = ["submitted", "verified", "rejected"];
+  for (const type of Object.keys(DOC_TYPES) as DocType[]) {
+    assert.doesNotMatch(DOC_TYPES[type].label, banned);
+    assert.doesNotMatch(DOC_TYPES[type].hint ?? "", banned);
+    for (const status of statuses) {
+      for (const validUntil of [null, "2027-03-31", "2026-11-01", "2026-10-01"]) {
+        for (const meta of [{}, { org: "AIDA", grade: "강사" }]) {
+          assert.doesNotMatch(factLabel(mk({ docType: type, status, validUntil, meta }), today), banned);
+        }
+      }
+    }
+  }
 });

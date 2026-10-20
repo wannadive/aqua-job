@@ -27,12 +27,21 @@ export function latestByType(docs: DocRecord[]): Partial<Record<DocType, DocReco
   return out;
 }
 
+/** 서류 이름 앞부분. 자격증은 "{단체} {등급} 자격증", 그 외는 meta를 앞에 붙인다. */
+function headLabel(type: DocType, label: string, org?: string, grade?: string): string {
+  if (!org && !grade) return label;
+  if (type === "instructor_cert" || type === "rep_instructor_cert") {
+    const core = [org, grade ?? "강사", "자격증"].filter(Boolean).join(" ");
+    return type === "rep_instructor_cert" ? `대표강사 ${core}` : core;
+  }
+  return [org, grade, label].filter(Boolean).join(" ");
+}
+
 /** 사실만 보여 준다. 보증·추천 표현은 쓰지 않는다. */
 export function factLabel(doc: DocRecord, today: string): string {
   const { org, grade } = doc.meta;
   const base = DOC_TYPES[doc.docType].label;
-  const prefix = [org, grade].filter(Boolean).join(" ");
-  const head = prefix ? `${prefix} ${base.replace("강사 ", "")}` : base;
+  const head = headLabel(doc.docType, base, org, grade);
   const status = displayStatus(doc, today);
   switch (status) {
     case "submitted":
