@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* 디자인 B안 토큰 */
+    --bg: #F4F8FB;
+    --ink: #0E2235;
+    --accent: #0AA88E;
+    --muted: #6B7F92;
+    --warn: #B7791F;
+    --warn-bg: #FFF1D6;
+    --ok: #0A8F79;
+    --ok-bg: #DDF7F1;
+    --surface: #E8F0F6;
+    --line: #DCE6EE;
+    --danger: #C0392B;
+    --radius-card: 18px;
+  }
+
+  * {
+    @apply border-line;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-bg text-ink antialiased;
+    font-family: "Pretendard Variable", Pretendard, system-ui, -apple-system, sans-serif;
+  }
+}
