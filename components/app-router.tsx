@@ -5,6 +5,7 @@ import { LoginForm } from "@/components/auth/login-form";
 import { SignupForm } from "@/components/auth/signup-form";
 import { SignupSelect } from "@/components/auth/signup-select";
 import { IntroSlides } from "@/components/intro/intro-slides";
+import { AdminShell } from "@/components/admin/admin-shell";
 import { BlockedScreen } from "@/components/shared/blocked-screen";
 import { CenterShell } from "@/components/center/center-shell";
 import { InstructorShell } from "@/components/instructor/instructor-shell";
@@ -30,23 +31,6 @@ function writeIntroSeen() {
   } catch {
     // 저장이 막힌 환경(사생활 보호 모드 등)에서는 이번 접속에서만 유효
   }
-}
-
-function Shell({ title, desc }: { title: string; desc: string }) {
-  const { user, logout } = useAuth();
-  return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-10">
-      <div className="rounded-card bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-bold text-ink">{title}</h1>
-        <p className="mt-1 text-sm text-muted">
-          {user?.displayName}님, {desc}
-        </p>
-        <Button variant="outline" className="mt-6 w-full" onClick={() => void logout()}>
-          로그아웃
-        </Button>
-      </div>
-    </main>
-  );
 }
 
 export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
@@ -116,6 +100,6 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     case "center":
       return <CenterShell />;
     case "admin":
-      return <Shell title="관리자" desc="곧 열려요" />;
+      return <AdminShell />;
   }
 }
