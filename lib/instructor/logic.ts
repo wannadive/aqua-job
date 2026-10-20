@@ -27,6 +27,9 @@ export function formatRecords(r: Records): { label: "STA" | "DYN" | "CWT" | "FIM
   return out;
 }
 
+export const STA_MAX_SEC = 900; // 15:00
+export const METER_MAX = 300;
+
 /** "5:12" → 312, "312" → 312, 잘못된 값 → null */
 export function parseStaInput(s: string): number | null {
   const t = s.trim();
@@ -35,16 +38,17 @@ export function parseStaInput(s: string): number | null {
   if (m) {
     const sec = Number(m[2]);
     if (sec > 59) return null;
-    return Number(m[1]) * 60 + sec;
+    const v = Number(m[1]) * 60 + sec;
+    return v > STA_MAX_SEC ? null : v;
   }
-  if (/^\d+$/.test(t)) return Number(t);
+  if (/^\d+$/.test(t)) return Number(t) > STA_MAX_SEC ? null : Number(t);
   return null;
 }
 
 /** 미터 입력("150", "150m") → 숫자, 잘못된 값 → null */
 export function parseMeterInput(s: string): number | null {
   const m = /^(\d{1,4})\s*m?$/i.exec(s.trim());
-  return m ? Number(m[1]) : null;
+  return m && Number(m[1]) <= METER_MAX ? Number(m[1]) : null;
 }
 
 export function resumeCompleteness(p: InstructorProfile): { done: number; total: number; missing: string[] } {

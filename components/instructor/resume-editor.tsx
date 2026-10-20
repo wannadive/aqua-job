@@ -20,6 +20,8 @@ const SECTIONS: { title: string; keys: StepKey[] }[] = [
   { title: "가능 조건", keys: ["availableDays", "desiredRate"] },
 ];
 
+const SELF_REPORTED: StepKey[] = ["certifications", "instructorYears", "intro"];
+
 const LABEL: Partial<Record<StepKey, string>> = {
   photoPath: "프로필 사진", gender: "성별", ageBand: "나이대", intro: "자기소개",
   mbti: "MBTI", teachingStyleTags: "수업 스타일", certifications: "자격 단체·등급",
@@ -31,9 +33,12 @@ export function ResumeEditor() {
   const [draft, setDraftState] = useState<Draft | null>(null);
   const [contacts, setContacts] = useState<PrivateContacts>({ phone: "", email: "" });
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setLoadError(false);
     Promise.all([fetchMyInstructorProfile(), fetchMyContacts()])
       .then(([p, c]) => {
         if (cancelled) return;
@@ -43,19 +48,29 @@ export function ResumeEditor() {
       .catch(() => {
         if (!cancelled) {
           toast.error("이력서를 불러오지 못했어요");
-          setDraftState({});
+          setLoadError(true);
         }
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
+  if (loadError)
+    return (
+      <div className="rounded-card bg-white p-6 text-center shadow-sm">
+        <h1 className="text-lg font-bold text-ink">이력서를 불러오지 못했어요</h1>
+        <p className="mt-2 text-sm text-muted">네트워크를 확인하고 다시 시도해 주세요.</p>
+        <Button className="mt-5 h-[52px] w-full bg-ink text-base text-white" onClick={() => setAttempt((n) => n + 1)}>
+          다시 시도
+        </Button>
+      </div>
+    );
   if (!draft) return <div className="py-20 text-center text-sm text-muted">불러오는 중…</div>;
   const setDraft = (p: Draft) => setDraftState((d) => ({ ...d, ...p }));
 
   const save = async () => {
-    if (saving) return;
+    if (saving || !draft) return;
     setSaving(true);
     try {
       const { userId: _userId, onboardingDone: _o, ...patch } = draft;
@@ -89,7 +104,7 @@ export function ResumeEditor() {
               const step = RESUME_STEPS.find((s) => s.key === k)!;
               return (
                 <div key={k}>
-                  <div className="mb-2 text-sm font-semibold text-ink">{LABEL[k]}</div>
+                  <div className="mb-2 text-sm font-semibold text-ink">{LABEL[k]}{SELF_REPORTED.includes(k) && <span className="ml-1 font-normal text-muted">(본인 입력)</span>}</div>
                   <StepInput step={step} draft={draft} setDraft={setDraft} />
                 </div>
               );

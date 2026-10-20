@@ -28,7 +28,7 @@ function ComingSoon({ title }: { title: string }) {
   );
 }
 
-function Home_({ onResume }: { onResume: () => void }) {
+function HomeTab({ onResume }: { onResume: () => void }) {
   const { user, logout } = useAuth();
   const [profile, setProfile] = useState<InstructorProfile | null>(null);
   const [docs, setDocs] = useState<{ submitted: number; verified: number; rejected: number } | null>(null);
@@ -101,7 +101,7 @@ export function InstructorShell() {
   return (
     <div className="mx-auto min-h-dvh w-full max-w-md">
       <main className="px-5 pb-28 pt-8">
-        {tab === "home" && <Home_ onResume={() => setTab("resume")} />}
+        {tab === "home" && <HomeTab onResume={() => setTab("resume")} />}
         {tab === "jobs" && <ComingSoon title="공고" />}
         {tab === "offers" && <ComingSoon title="제안" />}
         {tab === "applications" && <ComingSoon title="지원 현황" />}

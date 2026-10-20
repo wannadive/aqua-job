@@ -10,7 +10,7 @@ import {
   AGE_BAND_OPTIONS, CERT_ORG_OPTIONS, DAY_OPTIONS, GENDER_OPTIONS, MBTI_OPTIONS,
   REGION_OPTIONS, SCOPE_OPTIONS, STYLE_TAG_OPTIONS, TIME_OPTIONS,
 } from "@/lib/instructor/config";
-import { formatRecords, parseMeterInput, parseStaInput } from "@/lib/instructor/logic";
+import { formatRecords, METER_MAX, parseMeterInput, parseStaInput } from "@/lib/instructor/logic";
 import type { InstructorProfile, Records, ResumeStep, Scope } from "@/lib/instructor/types";
 
 export type Draft = Partial<InstructorProfile>;
@@ -89,6 +89,16 @@ function RecordsInput({ value, onChange }: { value: Records; onChange: (r: Recor
           <Input inputMode={f.label === "STA" ? "text" : "numeric"} placeholder={f.ph} value={raw[f.label] ?? ""} onChange={(e) => set(f.label, e.target.value)} className="mt-1 h-12 bg-white" />
         </label>
       ))}
+      {fields.map((f) => {
+        const text = (raw[f.label] ?? "").trim();
+        const bad = text !== "" && (f.label === "STA" ? parseStaInput(text) : parseMeterInput(text)) == null;
+        if (!bad) return null;
+        return (
+          <p key={f.label} role="alert" className="col-span-2 text-xs text-warn">
+            {f.label === "STA" ? "STA는 분:초 형식으로 적어주세요, 예: 5:12 (최대 15:00)" : `${f.label}는 숫자로 적어주세요, 예: 50 (최대 ${METER_MAX}m)`}
+          </p>
+        );
+      })}
       <p className="col-span-2 text-xs text-muted">본인이 입력한 기록이에요 (본인 입력)</p>
     </div>
   );
