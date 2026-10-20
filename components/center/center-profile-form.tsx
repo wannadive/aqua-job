@@ -149,6 +149,9 @@ function PhotosInput({ value, onChange }: { value: string[]; onChange: (v: strin
 }
 
 function NumberInput({ value, onChange, unit, max }: { value: number | null | undefined; onChange: (v: number | null) => void; unit: string; max: number }) {
+  // 입력 중에는 친 글자 그대로 두고, 포커스를 벗어날 때 0~max 범위로 맞춘다(저장되는 값은 항상 범위 안).
+  const [text, setText] = useState<string | null>(null);
+  const clamp = (raw: string): number | null => (raw === "" || Number.isNaN(Number(raw)) ? null : Math.max(0, Math.min(max, Math.floor(Number(raw)))));
   return (
     <div className="flex items-center gap-2">
       <Input
@@ -157,8 +160,12 @@ function NumberInput({ value, onChange, unit, max }: { value: number | null | un
         min={0}
         max={max}
         placeholder="0"
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value === "" ? null : Math.max(0, Math.min(max, Math.floor(Number(e.target.value)))))}
+        value={text ?? value ?? ""}
+        onChange={(e) => {
+          setText(e.target.value);
+          onChange(clamp(e.target.value));
+        }}
+        onBlur={() => setText(null)}
         className="h-12 w-32 bg-white text-lg"
       />
       <span className="text-base text-ink">{unit}</span>

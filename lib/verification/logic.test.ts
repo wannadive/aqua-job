@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DOC_TYPES } from "./config.ts";
-import { displayStatus, latestByType, factLabel, missingRequirements } from "./logic.ts";
+import { displayStatus, latestByType, factLabel, missingRequirements, todayKst } from "./logic.ts";
 import type { DocRecord, DocType, DocReviewStatus } from "./types.ts";
 
 function mk(over: Partial<DocRecord> = {}): DocRecord {
@@ -83,4 +83,10 @@ test("중립 원칙: 모든 표시 문구에 보증 표현 없음", () => {
       }
     }
   }
+});
+
+test("todayKst: UTC 15:00 이후는 한국 기준 다음 날", () => {
+  assert.equal(todayKst(new Date("2026-10-21T14:59:59Z")), "2026-10-21");
+  assert.equal(todayKst(new Date("2026-10-21T15:00:00Z")), "2026-10-22");
+  assert.equal(todayKst(new Date("2026-12-31T20:00:00Z")), "2027-01-01");
 });

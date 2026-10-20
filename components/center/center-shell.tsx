@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import { Briefcase, Home, Search, Settings, Users } from "lucide-react";
 import { toast } from "sonner";
+import { DocumentList } from "@/components/documents/document-list";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/supabase/auth-provider";
 import { fetchMyDocuments } from "@/lib/verification/api";
-import { displayStatus, latestByType, missingRequirements } from "@/lib/verification/logic";
-import type { DocType } from "@/lib/verification/types";
+import { displayStatus, latestByType, todayKst } from "@/lib/verification/logic";
+import type { DocDisplayStatus } from "@/lib/verification/types";
 import { CenterProfileForm } from "./center-profile-form";
 
 type Tab = "home" | "jobs" | "applicants" | "instructors" | "settings";
@@ -31,30 +32,46 @@ function ComingSoon({ title }: { title: string }) {
 
 function HomeTab({ onSubmitDocs }: { onSubmitDocs: () => void }) {
   const { user, logout } = useAuth();
-  // null = 아직 모름(안내 카드를 띄우지 않음), true = 사업자등록증 확인 전
-  const [needsBizDoc, setNeedsBizDoc] = useState<boolean | null>(null);
+  // null = 아직 모름(안내 카드를 띄우지 않음)
+  const [bizStatus, setBizStatus] = useState<{ st: DocDisplayStatus; reason: string | null } | null>(null);
+  const [docError, setDocError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setDocError(false);
     fetchMyDocuments()
       .then((list) => {
         if (cancelled) return;
-        const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
-        const verified: DocType[] = Object.values(latestByType(list))
-          .filter((d) => {
-            const st = displayStatus(d, today);
-            return st === "verified" || st === "expiring";
-          })
-          .map((d) => d.docType);
-        setNeedsBizDoc(missingRequirements(verified, ["business_registration"]).length > 0);
+        const d = latestByType(list).business_registration;
+        setBizStatus({ st: displayStatus(d, todayKst()), reason: d?.rejectReason ?? null });
       })
       .catch(() => {
-        if (!cancelled) toast.error("서류 상태를 불러오지 못했어요");
+        if (!cancelled) setDocError(true);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
+
+  const bizTitle: Partial<Record<DocDisplayStatus, string>> = {
+    missing: "사업자등록증 확인 전",
+    submitted: "사업자등록증 확인 대기 중",
+    rejected: "사업자등록증이 반려됐어요",
+    expired: "사업자등록증이 만료됐어요",
+  };
+  const bizBody: Partial<Record<DocDisplayStatus, string>> = {
+    missing: "사업자등록증이 확인되면 공고를 올리고 강사에게 제안할 수 있어요",
+    submitted: "제출한 서류를 확인하고 있어요. 확인이 끝나면 알려 드릴게요",
+    rejected: "서류를 다시 올려 주세요",
+    expired: "서류를 다시 올려 주세요",
+  };
+  const bizButton: Partial<Record<DocDisplayStatus, string>> = {
+    missing: "서류 제출하기",
+    submitted: "제출 내역 보기",
+    rejected: "다시 올리기",
+    expired: "다시 올리기",
+  };
 
   const soon = () => toast("곧 열려요");
 
@@ -66,12 +83,22 @@ function HomeTab({ onSubmitDocs }: { onSubmitDocs: () => void }) {
         안녕하세요
       </h1>
 
-      {needsBizDoc && (
+      {docError && (
+        <div className="flex items-center justify-between gap-3 rounded-card bg-white p-4 text-sm text-muted shadow-sm">
+          서류 상태를 불러오지 못했어요
+          <button type="button" onClick={() => setAttempt((n) => n + 1)} className="font-semibold text-ink underline">
+            다시 시도
+          </button>
+        </div>
+      )}
+
+      {bizStatus && bizTitle[bizStatus.st] && (
         <section className="rounded-card bg-warn-bg p-5">
-          <h2 className="text-lg font-bold text-warn">사업자등록증 확인 전</h2>
-          <p className="mt-1 text-sm text-ink">사업자등록증이 확인되면 공고를 올리고 강사에게 제안할 수 있어요</p>
+          <h2 className="text-lg font-bold text-warn">{bizTitle[bizStatus.st]}</h2>
+          <p className="mt-1 text-sm text-ink">{bizBody[bizStatus.st]}</p>
+          {bizStatus.st === "rejected" && bizStatus.reason && <p className="mt-1 text-sm text-ink">반려 사유: {bizStatus.reason}</p>}
           <Button className="mt-4 h-[52px] w-full bg-ink text-base text-white" onClick={onSubmitDocs}>
-            서류 제출하기
+            {bizButton[bizStatus.st]}
           </Button>
         </section>
       )}
@@ -116,10 +143,7 @@ function SettingsTab() {
     <div className="space-y-4">
       <h1 className="text-[26px] font-bold tracking-tight text-ink">설정</h1>
       <CenterProfileForm />
-      <section className="rounded-card bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-bold text-ink">서류</h2>
-        <p className="mt-2 text-sm text-muted">곧 열려요</p>
-      </section>
+      <DocumentList owner="center" />
     </div>
   );
 }

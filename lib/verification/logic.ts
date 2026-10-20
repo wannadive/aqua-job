@@ -63,3 +63,8 @@ export function factLabel(doc: DocRecord, today: string): string {
 export function missingRequirements(verified: DocType[], required: DocType[]): DocType[] {
   return required.filter((t) => !verified.includes(t));
 }
+
+/** 한국 시간(Asia/Seoul) 기준 오늘 날짜 YYYY-MM-DD. 테스트에서는 now를 주입한다. */
+export function todayKst(now: Date = new Date()): string {
+  return new Date(now.getTime() + 9 * 3600e3).toISOString().slice(0, 10);
+}
