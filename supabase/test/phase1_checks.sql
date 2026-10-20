@@ -267,13 +267,45 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
+-- banned_cannot_upload_avatar: 퇴출된 강사A는 avatars 버킷에 올릴 수 없다
+--   (위 검사에서 강사A는 이미 banned 상태)
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_blocked boolean := false;
+begin
+  -- 대조군: 활성 상태의 강사B는 자기 폴더에 올릴 수 있다
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'a0000000-0000-4000-8000-00000000000b', 'role', 'authenticated')::text, true);
+  insert into storage.objects (bucket_id, name, owner)
+  values ('avatars', 'a0000000-0000-4000-8000-00000000000b/me.jpg', 'a0000000-0000-4000-8000-00000000000b');
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'a0000000-0000-4000-8000-00000000000a', 'role', 'authenticated')::text, true);
+  begin
+    insert into storage.objects (bucket_id, name, owner)
+    values ('avatars', 'a0000000-0000-4000-8000-00000000000a/me.jpg', 'a0000000-0000-4000-8000-00000000000a');
+  exception when insufficient_privilege then
+    v_blocked := true;
+  end;
+  reset role;
+
+  if not v_blocked then
+    raise exception 'banned_cannot_upload_avatar 실패';
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------
 -- has_requirements_tour: 센터C가 사업자등록증만 확인됐을 때 post_tour는 false,
---                        여행업 등록증까지 확인되면 true
+--                        여행업 등록증까지 확인되면 true. 센터C 본인이 물어본다.
+--                        다른 사용자(강사B)가 센터C 요건을 물어보면 거부.
 -- ---------------------------------------------------------------------
 do $$
 declare
   v_tour boolean;
   v_lesson boolean;
+  v_blocked boolean := false;
 begin
   set local role authenticated;
   perform set_config('request.jwt.claims',
@@ -289,23 +321,95 @@ begin
     raise exception 'has_requirements_tour 실패 (확인 전 post_lesson이 true)';
   end if;
 
+  -- 관리자: 사업자등록증만 확인
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'a0000000-0000-4000-8000-00000000000d', 'role', 'authenticated')::text, true);
   perform public.review_document('d0000000-0000-4000-8000-0000000000c1', 'verified', null, null);
 
+  -- 센터C 본인
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'a0000000-0000-4000-8000-00000000000c', 'role', 'authenticated')::text, true);
   v_tour := public.has_requirements('a0000000-0000-4000-8000-00000000000c', 'post_tour');
   v_lesson := public.has_requirements('a0000000-0000-4000-8000-00000000000c', 'post_lesson');
   if v_tour or not v_lesson then
     raise exception 'has_requirements_tour 실패 (사업자만: post_tour %, post_lesson %)', v_tour, v_lesson;
   end if;
 
+  -- 강사B가 센터C 요건을 물어보면 거부
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'a0000000-0000-4000-8000-00000000000b', 'role', 'authenticated')::text, true);
+  begin
+    perform public.has_requirements('a0000000-0000-4000-8000-00000000000c', 'post_tour');
+  exception when insufficient_privilege then
+    v_blocked := true;
+  end;
+  if not v_blocked then
+    raise exception 'has_requirements_tour 실패 (다른 사용자가 센터C 요건을 조회함)';
+  end if;
+
+  -- 관리자: 여행업 등록증 확인
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'a0000000-0000-4000-8000-00000000000d', 'role', 'authenticated')::text, true);
   perform public.review_document('d0000000-0000-4000-8000-0000000000c2', 'verified', null, null);
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'a0000000-0000-4000-8000-00000000000c', 'role', 'authenticated')::text, true);
   v_tour := public.has_requirements('a0000000-0000-4000-8000-00000000000c', 'post_tour');
   if not v_tour then
     raise exception 'has_requirements_tour 실패 (여행업까지 확인 후 post_tour false)';
   end if;
 
   reset role;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- id_original_kept_for_purge: 신분증을 확인해도 RPC는 file_path를 지우지 않는다
+--   (원본 삭제와 경로 비우기는 /api/admin/purge-original이 service role로 한다)
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_path text;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'a0000000-0000-4000-8000-00000000000c', 'role', 'authenticated')::text, true);
+  insert into public.documents (id, owner_id, doc_type, file_path)
+  values ('d0000000-0000-4000-8000-0000000000c3', 'a0000000-0000-4000-8000-00000000000c',
+          'representative_id', 'a0000000-0000-4000-8000-00000000000c/rep-id.jpg');
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'a0000000-0000-4000-8000-00000000000d', 'role', 'authenticated')::text, true);
+  perform public.review_document('d0000000-0000-4000-8000-0000000000c3', 'verified', null, null);
+  reset role;
+
+  select file_path into v_path from public.documents where id = 'd0000000-0000-4000-8000-0000000000c3';
+  if v_path is distinct from 'a0000000-0000-4000-8000-00000000000c/rep-id.jpg' then
+    raise exception 'id_original_kept_for_purge 실패 (file_path %)', v_path;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- future_submitted_at_blocked: 미래 제출 시각으로 '최신 서류' 자리를 잡을 수 없다
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_blocked boolean := false;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'a0000000-0000-4000-8000-00000000000b', 'role', 'authenticated')::text, true);
+  begin
+    insert into public.documents (owner_id, doc_type, file_path, submitted_at)
+    values ('a0000000-0000-4000-8000-00000000000b', 'first_aid',
+            'a0000000-0000-4000-8000-00000000000b/cpr.jpg', now() + interval '1 day');
+  exception when insufficient_privilege then
+    v_blocked := true;
+  end;
+  reset role;
+
+  if not v_blocked then
+    raise exception 'future_submitted_at_blocked 실패';
+  end if;
 end $$;
 
 rollback;

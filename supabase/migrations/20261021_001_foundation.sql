@@ -3,7 +3,8 @@
 -- 보안 핵심: 연락처(private_contacts)와 서류 원본(documents 버킷)은 본인·관리자만.
 -- Supabase SQL Editor에서 한 번에 실행한다. 다시 실행해도 깨지지 않게 썼다.
 --
--- [관리자 지정] 마이그레이션 실행 후, 관리자로 쓸 계정으로 먼저 가입한 다음
+-- [관리자 지정] 마이그레이션 실행 후, 관리자로 쓸 계정으로 먼저 앱에서 강사/센터로 가입한 다음
+-- (대시보드 Add user·초대·OAuth는 가입 유형 정보가 없어 트리거가 거부한다)
 -- 아래 한 줄의 이메일을 바꿔 SQL Editor에서 실행한다(postgres 권한이라 트리거 통과).
 --   update public.profiles set role = 'admin'
 --   where id = (select id from auth.users where email = '관리자@이메일');
@@ -351,6 +352,8 @@ create policy documents_insert_own_submitted on public.documents
     and verified_at is null
     -- 남의 파일 경로를 자기 서류로 걸어 관리자 화면에 띄우는 것을 막는다
     and (file_path is null or split_part(file_path, '/', 1) = (select auth.uid())::text)
+    -- 미래 시각으로 넣어 '최신 서류' 자리를 붙잡아 두는 것을 막는다
+    and submitted_at <= now() + interval '1 minute'
   );
 
 -- requirement_rules: 누구나 조회(화면 안내용). 변경은 SQL로만.
@@ -366,8 +369,10 @@ create policy admin_actions_select_admin on public.admin_actions
 -- ---------------------------------------------------------------------
 -- 6. RPC: 서류 확인/반려 (관리자 전용)
 --    유효기간이 있는 서류(hasExpiry) 목록은 lib/verification/config.ts와 같아야 한다.
---    신분증(id_card, representative_id)은 확인되면 file_path를 비운다.
---    원본 파일 삭제는 관리자 화면이 Storage API로 한다(SQL에서 storage.objects 직접 삭제 불가).
+--    신분증(id_card, representative_id) 원본은 이 RPC가 지우지 않는다. 확인 뒤 관리자 화면이
+--    POST /api/admin/purge-original {docId}를 부르면, 서버(service role)가 documents.file_path의
+--    Storage 객체를 지우고 그다음 file_path를 null로 바꾼다(SQL에서 storage.objects 직접 삭제 불가).
+--    그래서 여기서 file_path를 먼저 비우면 안 된다(지울 경로를 잃는다).
 -- ---------------------------------------------------------------------
 
 create or replace function public.review_document(
@@ -415,9 +420,7 @@ begin
       valid_until = case when v_has_expiry then p_valid_until else null end,
       reject_reason = null,
       reviewed_by = auth.uid(),
-      verified_at = now(),
-      file_path = case when v_doc.doc_type in ('id_card', 'representative_id')
-                       then null else file_path end
+      verified_at = now()
     where id = p_doc_id;
   else
     if v_reason is null then
@@ -449,16 +452,23 @@ grant execute on function public.review_document(uuid, text, date, text) to auth
 -- 7. RPC: 행동 요건 충족 여부 (2단계 공고 등록·제안에서 사용)
 --    requirement_rules의 모든 서류에 대해 최신 '확인됨' 서류가 있고, 유효기간(KST 기준)이
 --    지나지 않았으면 true. 규칙이 없는 행동은 true.
+--    본인 것만 물어볼 수 있다(관리자는 누구든). 뒤 단계의 SECURITY DEFINER RPC는
+--    auth.uid()를 넘겨 부르면 된다(auth.uid()는 definer 안에서도 호출자 그대로).
 -- ---------------------------------------------------------------------
 
 create or replace function public.has_requirements(p_user uuid, p_action text)
 returns boolean
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
-  select not exists (
+begin
+  if p_user is distinct from auth.uid() and not public.is_admin() then
+    raise exception '본인 요건만 확인할 수 있어요' using errcode = '42501';
+  end if;
+
+  return not exists (
     select 1
     from public.requirement_rules r
     where r.action = p_action
@@ -473,6 +483,7 @@ as $$
         limit 1
       ), false)
   );
+end;
 $$;
 
 revoke execute on function public.has_requirements(uuid, text) from public, anon;
@@ -481,7 +492,7 @@ grant execute on function public.has_requirements(uuid, text) to authenticated;
 -- ---------------------------------------------------------------------
 -- 8. Storage
 --    documents(비공개): {owner_id}/{uuid}.{ext} — 본인 올리기·보기·지우기, 관리자 보기·지우기
---    avatars(공개 읽기): {uid}/{uuid}.{ext} — 올리기·바꾸기·지우기는 본인만
+--    avatars(공개 읽기): {uid}/{uuid}.{ext} — 올리기·바꾸기·지우기는 활성 상태의 본인만
 -- ---------------------------------------------------------------------
 
 insert into storage.buckets (id, name, public)
@@ -530,15 +541,31 @@ create policy avatars_owner_select on storage.objects
 drop policy if exists avatars_owner_insert on storage.objects;
 create policy avatars_owner_insert on storage.objects
   for insert to authenticated
-  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and (select public.is_active())
+  );
 
 drop policy if exists avatars_owner_update on storage.objects;
 create policy avatars_owner_update on storage.objects
   for update to authenticated
-  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text)
-  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and (select public.is_active())
+  )
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and (select public.is_active())
+  );
 
 drop policy if exists avatars_owner_delete on storage.objects;
 create policy avatars_owner_delete on storage.objects
   for delete to authenticated
-  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (select auth.uid())::text);
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+    and (select public.is_active())
+  );
