@@ -198,7 +198,8 @@ $$;
 revoke execute on function public.can_view_job_detail(uuid) from public, anon;
 grant execute on function public.can_view_job_detail(uuid) to authenticated;
 
--- 대상 강사가 "보는 사람(활성 센터)의 공고"에 지원했는가. 지원 상태와 관계없이(취소 포함) 참.
+-- 대상 강사가 "보는 사람(활성 센터)의 공고"에 지원했는가. 지원을 취소(withdrawn)한 것은 빼고
+-- 지원함·선택됨·미선택이면 참 — 취소하면 그 센터는 비공개 강사의 이름·이력서를 더는 못 본다.
 -- SECURITY DEFINER라 정책 안에서 불러도 job_applications·job_posts RLS를 다시 돌지 않는다.
 create or replace function public.applied_to_my_jobs(p_instructor uuid)
 returns boolean
@@ -217,7 +218,7 @@ as $$
       select 1
       from public.job_applications a
       join public.job_posts j on j.id = a.job_id
-      where a.instructor_id = p_instructor and j.owner_id = auth.uid()
+      where a.instructor_id = p_instructor and j.owner_id = auth.uid() and a.status <> 'withdrawn'
     ),
     false
   );
@@ -418,6 +419,9 @@ begin
   if r.description is null then
     raise exception '상세 설명을 써 주세요' using errcode = '22023';
   end if;
+  if char_length(r.description) > 3000 then
+    raise exception '상세 설명은 3000자까지 쓸 수 있어요' using errcode = '22023';
+  end if;
 
   r.headcount := (p ->> 'headcount')::int;
   if r.headcount is null or r.headcount not between 1 and 20 then
@@ -451,6 +455,9 @@ begin
     ) x
     where btrim(x) <> ''
   ), '{}');
+  if cardinality(r.requirement_tags) > 10 then
+    raise exception '자격 조건은 10개까지 고를 수 있어요' using errcode = '22023';
+  end if;
 
   if p_type = 'lesson' then
     r.class_date := (p ->> 'class_date')::date;
@@ -473,6 +480,9 @@ begin
       ) x
       where btrim(x) <> ''
     ), '{}');
+    if not (r.work_days <@ array['월', '화', '수', '목', '금', '토', '일']::text[]) then
+      raise exception '근무 요일은 월~일 중에서 골라 주세요' using errcode = '22023';
+    end if;
     r.work_time := nullif(btrim(coalesce(p ->> 'work_time', '')), '');
   else -- tour
     r.tour_start := (p ->> 'tour_start')::date;
@@ -627,8 +637,9 @@ grant execute on function public.record_job_view(uuid, text) to anon, authentica
 
 -- 서류 사실: 종류별 유효 서류(effective_doc)의 종류·유효기간·확인일·단체·등급만.
 -- 파일 경로·번호·반려 사유는 절대 내보내지 않는다. 신분증도 "확인됨" 사실만.
--- 센터 역할 계정의 사실은 누구나(센터 공개 페이지), 그 밖(강사)은 그 사람의 이름을 볼 수 있는
--- 사용자(can_view_profile: 본인·관리자·공개 강사를 보는 센터·지원받은 센터)만.
+-- 센터 역할 계정의 센터 서류 사실은 누구나(센터 공개 페이지), 그 밖(강사 서류)은 그 사람의 이름을
+-- 볼 수 있는 사용자(can_view_profile: 본인·관리자·공개 강사를 보는 센터·지원받은 센터)만.
+-- 센터+강사 여러 역할 계정이라도 비로그인에게는 센터 서류 사실만 나간다. 정지·퇴출 계정은 숨긴다.
 create or replace function public.get_public_facts(p_user uuid)
 returns table (doc_type text, valid_until date, verified_at timestamptz, org text, grade text)
 language sql
@@ -644,9 +655,15 @@ as $$
     where d.owner_id = p_user and d.status = 'verified'
   ) t
   cross join lateral public.effective_doc(p_user, t.doc_type) e
+  join public.profiles tp on tp.id = p_user
   where e.id is not null
+    -- 정지·퇴출 계정의 사실은 숨긴다(본인·관리자는 본다)
+    and (tp.account_status = 'active' or p_user = auth.uid() or public.is_admin())
     and (
-      exists (select 1 from public.profiles c where c.id = p_user and 'center' = any(c.roles))
+      -- 센터 서류 사실: 대상이 센터 역할이면 누구나
+      ('center' = any(tp.roles)
+       and e.doc_type in ('business_registration', 'travel_business', 'representative_id', 'rep_instructor_cert'))
+      -- 그 밖(강사 서류 등): 대상의 이름을 볼 수 있는 로그인 사용자만
       or (auth.uid() is not null and public.can_view_profile(p_user))
     )
   order by e.doc_type;
@@ -791,7 +808,7 @@ $$;
 revoke execute on function public.get_job_detail(uuid) from public, anon;
 grant execute on function public.get_job_detail(uuid) to authenticated;
 
--- 지원자 연락처: 공고 주인(활성)이고 그 지원이 '선택됨'일 때만 1행. 그 외는 빈 결과.
+-- 지원자 연락처: 공고 주인(활성)이고 그 지원이 '선택됨'이고 지원자도 활성일 때만 1행. 그 외는 빈 결과.
 create or replace function public.get_applicant_contact(p_app uuid)
 returns table (phone text, email text)
 language sql
@@ -803,8 +820,10 @@ as $$
   from public.job_applications a
   join public.job_posts j on j.id = a.job_id
   join public.private_contacts pc on pc.user_id = a.instructor_id
+  join public.profiles ap on ap.id = a.instructor_id
   where a.id = p_app
     and a.status = 'selected'
+    and ap.account_status = 'active'
     and auth.uid() is not null
     and j.owner_id = auth.uid()
     and public.is_active();
@@ -965,7 +984,8 @@ $$;
 revoke execute on function public.update_job_post(uuid, jsonb) from public, anon;
 grant execute on function public.update_job_post(uuid, jsonb) to authenticated;
 
--- 공고 마감(직접): 주인만. 저장 상태가 open일 때만 → closed/manual, 남은 지원함 → 미선택.
+-- 공고 마감(직접): 주인만. 저장 상태가 open일 때만 → closed/manual(이미 기한이 지났으면 expired),
+-- 남은 지원함 → 미선택.
 create or replace function public.close_job_post(p_job uuid)
 returns void
 language plpgsql
@@ -992,7 +1012,11 @@ begin
     raise exception '이미 마감된 공고예요' using errcode = '22023';
   end if;
 
-  perform public.close_job_with_reason(p_job, 'manual');
+  -- 이미 마감일·수업일이 지난(저장 상태만 open인) 공고는 사유를 'expired'로 남긴다
+  perform public.close_job_with_reason(
+    p_job,
+    case when public.job_effective_status(v_job) = 'expired' then 'expired' else 'manual' end
+  );
 end;
 $$;
 
@@ -1138,7 +1162,14 @@ begin
   if v_app.status is distinct from 'applied' then
     raise exception '지원함 상태의 지원자만 선택할 수 있어요' using errcode = '22023';
   end if;
-  if public.job_effective_status(v_job) <> 'open' then
+  -- 정지·퇴출된 지원자는 선택할 수 없다(연락처가 열리면 안 된다)
+  if not exists (
+    select 1 from public.profiles ap where ap.id = v_app.instructor_id and ap.account_status = 'active'
+  ) then
+    raise exception '활성 상태가 아닌 지원자는 선택할 수 없어요' using errcode = '42501';
+  end if;
+  -- 숨김·마감·기한 지남은 여기서 거부. 인원(full)은 아래에서 잠금 안의 선택 수로 직접 센다.
+  if public.job_effective_status(v_job) not in ('open', 'full') then
     raise exception '모집이 끝난 공고예요' using errcode = '22023';
   end if;
 

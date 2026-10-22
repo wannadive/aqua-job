@@ -85,7 +85,9 @@ insert into public.documents (id, owner_id, doc_type, file_path, meta) values
   ('f2d00000-0000-4000-8000-0000000000b1', 'f2000000-0000-4000-8000-0000000000b1',
    'business_registration', 'f2000000-0000-4000-8000-0000000000b1/biz.jpg', '{}'),
   ('f2d00000-0000-4000-8000-0000000000a2', 'f2000000-0000-4000-8000-0000000000a2',
-   'id_card', 'f2000000-0000-4000-8000-0000000000a2/id.jpg', '{"number":"900101-1234567"}');
+   'id_card', 'f2000000-0000-4000-8000-0000000000a2/id.jpg', '{"number":"900101-1234567"}'),
+  ('f2d00000-0000-4000-8000-0000000000b2', 'f2000000-0000-4000-8000-0000000000b1',
+   'instructor_cert', 'f2000000-0000-4000-8000-0000000000b1/cert.jpg', '{"org":"AIDA","grade":"강사"}');
 
 do $$
 begin
@@ -97,6 +99,7 @@ begin
   perform public.review_document('f2d00000-0000-4000-8000-0000000000c4', 'verified', null, null);
   perform public.review_document('f2d00000-0000-4000-8000-0000000000b1', 'verified', null, null);
   perform public.review_document('f2d00000-0000-4000-8000-0000000000a2', 'verified', null, null);
+  perform public.review_document('f2d00000-0000-4000-8000-0000000000b2', 'verified', date '2099-12-31', null);
   reset role;
 end $$;
 
@@ -570,6 +573,27 @@ begin
 
   select status into v_status from public.job_applications where id = v_h2;
   if v_status <> 'not_selected' then raise exception 'select_respects_headcount 실패 (I2 %)', v_status; end if;
+
+  -- 잠금 안의 선택 수 검사까지 닿게: 자동 마감을 되돌려 "저장 상태 open + 선택 1명 = 인원 1"을 직접 만든다
+  -- (동시에 두 선택이 들어와 둘째가 잠금을 기다린 뒤 보게 되는 상태와 같다)
+  update public.job_posts set status = 'open', closed_reason = null where id = current_setting('jobs.h')::uuid;
+  update public.job_applications set status = 'applied', decided_at = null where id = v_h2;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f2000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
+  v_blocked := false;
+  begin
+    perform public.select_applicant(v_h2);
+  exception when invalid_parameter_value then
+    v_blocked := sqlerrm like '%인원%';
+  end;
+  reset role;
+  if not v_blocked then raise exception 'select_respects_headcount 실패 (잠금 안 인원 검사 미도달)'; end if;
+
+  select count(*) into n from public.job_applications
+    where job_id = current_setting('jobs.h')::uuid and status = 'selected';
+  if n <> 1 then raise exception 'select_respects_headcount 실패 (인원 검사 후 선택 %명)', n; end if;
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -972,7 +996,17 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'f2000000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
   v_app := public.apply_to_job(v_job, null);
+
+  -- 퇴출 전 C4가 I1을 선택 → 대조군: 연락처 1행
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f2000000-0000-4000-8000-0000000000c4', 'role', 'authenticated')::text, true);
+  perform public.select_applicant(v_app);
+  select count(*) into n from public.get_applicant_contact(v_app);
+  if n <> 1 then raise exception 'banned_cannot_apply_or_post 실패 (퇴출 전 연락처 %행)', n; end if;
   reset role;
+
+  -- 선택으로 인원이 찬 공고를 다시 열어 둔다(퇴출 뒤 공고 목록 제외를 공고 상태가 아니라 계정 상태로 확인하려고)
+  update public.job_posts set status = 'open', closed_reason = null, headcount = 2 where id = v_job;
 
   update public.profiles set account_status = 'banned' where id = 'f2000000-0000-4000-8000-0000000000c4';
 
@@ -1006,8 +1040,9 @@ begin
   end;
   if not v_blocked then raise exception 'banned_cannot_apply_or_post 실패 (퇴출 센터 마감)'; end if;
 
+  -- 선택한 지원자라도 퇴출된 센터에는 연락처가 열리지 않는다(is_active 관문)
   select count(*) into n from public.get_applicant_contact(v_app);
-  if n <> 0 then raise exception 'banned_cannot_apply_or_post 실패 (퇴출 센터 연락처 %행)', n; end if;
+  if n <> 0 then raise exception 'banned_cannot_apply_or_post 실패 (퇴출 센터가 선택한 지원자 연락처 %행)', n; end if;
 
   -- 퇴출 강사 I3
   perform set_config('request.jwt.claims',
@@ -1046,8 +1081,199 @@ begin
   select count(*) into n from public.job_posts
     where owner_id = 'f2000000-0000-4000-8000-0000000000c4';
   if n <> 1 then raise exception 'banned_cannot_apply_or_post 실패 (C4 공고 %행)', n; end if;
-  select count(*) into n from public.job_applications where id = v_app and status = 'applied';
+  select count(*) into n from public.job_applications where id = v_app and status = 'selected';
   if n <> 1 then raise exception 'banned_cannot_apply_or_post 실패 (C4 지원 상태 바뀜)'; end if;
+
+  -- 퇴출 계정(C4)의 서류 사실은 비로그인에게 안 나간다
+  set local role anon;
+  perform set_config('request.jwt.claims', json_build_object('role', 'anon')::text, true);
+  select count(*) into n from public.get_public_facts('f2000000-0000-4000-8000-0000000000c4');
+  reset role;
+  if n <> 0 then raise exception 'banned_cannot_apply_or_post 실패 (퇴출 센터 서류 사실 %행)', n; end if;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- public_facts_multi_role_scoped: 센터+강사 계정 M(사업자등록증·강사 자격증 확인)의 서류 사실을
+--   비로그인은 센터 서류(사업자등록증)만 받는다. 본인은 둘 다 본다.
+-- ---------------------------------------------------------------------
+do $$
+declare
+  n int;
+  v_types text[];
+begin
+  set local role anon;
+  perform set_config('request.jwt.claims', json_build_object('role', 'anon')::text, true);
+  select array_agg(f.doc_type order by f.doc_type) into v_types
+    from public.get_public_facts('f2000000-0000-4000-8000-0000000000b1') f;
+  reset role;
+  if v_types is distinct from array['business_registration']::text[] then
+    raise exception 'public_facts_multi_role_scoped 실패 (비로그인이 받은 사실 %)', v_types;
+  end if;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f2000000-0000-4000-8000-0000000000b1', 'role', 'authenticated')::text, true);
+  select count(*) into n from public.get_public_facts('f2000000-0000-4000-8000-0000000000b1');
+  reset role;
+  if n <> 2 then raise exception 'public_facts_multi_role_scoped 실패 (본인 %행)', n; end if;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- withdrawn_applicant_hidden_again: 비공개 강사I2가 C2 공고에 지원하면 C2가 이력서·이름을 보고,
+--   지원을 취소하면 다시 못 본다.
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_today date := (now() at time zone 'Asia/Seoul')::date;
+  v_job uuid;
+  v_app uuid;
+  n int;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f2000000-0000-4000-8000-0000000000c2', 'role', 'authenticated')::text, true);
+  v_job := public.create_job_post(jsonb_build_object(
+    'job_type', 'lesson', 'title', 'C2 수업 공고', 'region', '부산', 'class_date', v_today + 9,
+    'headcount', 1, 'description', 'C2 공고', 'deadline', v_today + 8));
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f2000000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
+  v_app := public.apply_to_job(v_job, null);
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f2000000-0000-4000-8000-0000000000c2', 'role', 'authenticated')::text, true);
+  select count(*) into n from public.instructor_profiles where user_id = 'f2000000-0000-4000-8000-0000000000a2';
+  if n <> 1 then raise exception 'withdrawn_applicant_hidden_again 실패 (지원 중 이력서 %행)', n; end if;
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f2000000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
+  perform public.withdraw_application(v_app);
+
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f2000000-0000-4000-8000-0000000000c2', 'role', 'authenticated')::text, true);
+  select count(*) into n from public.instructor_profiles where user_id = 'f2000000-0000-4000-8000-0000000000a2';
+  if n <> 0 then raise exception 'withdrawn_applicant_hidden_again 실패 (취소 후 이력서 %행)', n; end if;
+  select count(*) into n from public.profiles where id = 'f2000000-0000-4000-8000-0000000000a2';
+  if n <> 0 then raise exception 'withdrawn_applicant_hidden_again 실패 (취소 후 이름 %행)', n; end if;
+  reset role;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- close_expired_records_expired: 기한이 지났지만 저장 상태가 open인 공고를 주인이 마감하면 사유는 expired
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_today date := (now() at time zone 'Asia/Seoul')::date;
+  v_job uuid;
+  v_reason text;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f2000000-0000-4000-8000-0000000000c2', 'role', 'authenticated')::text, true);
+  v_job := public.create_job_post(jsonb_build_object(
+    'job_type', 'lesson', 'title', '기한 지난 공고', 'region', '부산', 'class_date', v_today + 3,
+    'headcount', 1, 'description', 'x', 'deadline', v_today));
+  reset role;
+
+  update public.job_posts set deadline = v_today - 1 where id = v_job;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f2000000-0000-4000-8000-0000000000c2', 'role', 'authenticated')::text, true);
+  perform public.close_job_post(v_job);
+  reset role;
+
+  select closed_reason into v_reason from public.job_posts where id = v_job;
+  if v_reason is distinct from 'expired' then
+    raise exception 'close_expired_records_expired 실패 (사유 %)', v_reason;
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- job_payload_limits: 상세 설명 3000자 초과, 자격 조건 11개, 월~일 밖의 근무 요일은 거부
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_today date := (now() at time zone 'Asia/Seoul')::date;
+  v_base jsonb := jsonb_build_object(
+    'job_type', 'affiliation', 'title', '한도 검사', 'region', '서울',
+    'work_days', jsonb_build_array('월', '수'), 'headcount', 1, 'description', '설명', 'deadline', v_today + 14);
+  v_bad jsonb[] := array[
+    v_base || jsonb_build_object('description', repeat('가', 3001)),
+    v_base || jsonb_build_object('requirement_tags',
+      (select jsonb_agg('태그' || g::text) from generate_series(1, 11) g)),
+    v_base || jsonb_build_object('work_days', jsonb_build_array('월', '공휴일'))
+  ];
+  v_payload jsonb;
+  v_blocked boolean;
+  i int := 0;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f2000000-0000-4000-8000-0000000000c2', 'role', 'authenticated')::text, true);
+
+  -- 대조군: 기본 값은 통과(자격 조건 10개, 설명 3000자)
+  perform public.create_job_post(v_base || jsonb_build_object(
+    'description', repeat('가', 3000),
+    'requirement_tags', (select jsonb_agg('태그' || g::text) from generate_series(1, 10) g)));
+
+  foreach v_payload in array v_bad loop
+    i := i + 1;
+    v_blocked := false;
+    begin
+      perform public.create_job_post(v_payload);
+    exception when invalid_parameter_value then
+      v_blocked := true;
+    end;
+    if not v_blocked then raise exception 'job_payload_limits 실패 (%번째 값 통과)', i; end if;
+  end loop;
+  reset role;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- banned_applicant_not_selectable: 정지·퇴출된 지원자는 선택할 수 없고,
+--   이미 선택된 지원자가 퇴출되면 연락처도 더는 열리지 않는다.
+-- ---------------------------------------------------------------------
+do $$
+declare
+  v_today date := (now() at time zone 'Asia/Seoul')::date;
+  v_job uuid;
+  v_app uuid;
+  v_blocked boolean := false;
+  v_status text;
+  n int;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f2000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
+  v_job := public.create_job_post(jsonb_build_object(
+    'job_type', 'lesson', 'title', '퇴출 지원자 검사', 'region', '서울', 'class_date', v_today + 9,
+    'headcount', 2, 'description', 'x', 'deadline', v_today + 8));
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f2000000-0000-4000-8000-0000000000a4', 'role', 'authenticated')::text, true);
+  v_app := public.apply_to_job(v_job, null);
+  reset role;
+
+  update public.profiles set account_status = 'suspended' where id = 'f2000000-0000-4000-8000-0000000000a4';
+  update public.profiles set account_status = 'banned' where id = 'f2000000-0000-4000-8000-0000000000a1';
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f2000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
+  begin
+    perform public.select_applicant(v_app);
+  exception when insufficient_privilege then
+    v_blocked := true;
+  end;
+  if not v_blocked then raise exception 'banned_applicant_not_selectable 실패 (정지된 지원자 선택)'; end if;
+
+  -- 공고A에서 이미 선택된 I1이 퇴출 → 연락처 빈 결과
+  select count(*) into n from public.get_applicant_contact(current_setting('jobs.app_a1')::uuid);
+  reset role;
+  if n <> 0 then raise exception 'banned_applicant_not_selectable 실패 (퇴출 지원자 연락처 %행)', n; end if;
+
+  select status into v_status from public.job_applications where id = v_app;
+  if v_status <> 'applied' then raise exception 'banned_applicant_not_selectable 실패 (지원 상태 %)', v_status; end if;
 end $$;
 
 rollback;
