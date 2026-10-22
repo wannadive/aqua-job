@@ -1,4 +1,4 @@
-// 손으로 쓴 DB 타입 (supabase/migrations/ 001 기반 스키마 + 003 여러 역할 기준).
+// 손으로 쓴 DB 타입 (supabase/migrations/ 001 기반 스키마 + 003 여러 역할 + 005 공고 기준).
 // 스키마를 바꾸면 여기도 같이 고친다.
 
 export type Json =
@@ -22,6 +22,132 @@ export type DocTypeValue =
   | "rep_instructor_cert";
 export type DocStatusValue = "submitted" | "verified" | "rejected";
 export type RequirementAction = "post_lesson" | "post_affiliation" | "post_tour" | "send_offer";
+
+// 005 공고
+export type JobTypeValue = "lesson" | "affiliation" | "tour";
+export type PayUnitValue = "per_class" | "per_hour" | "per_day" | "per_month" | "total";
+/** 저장 상태 */
+export type JobPostStatus = "open" | "closed" | "hidden";
+export type JobClosedReason = "manual" | "full" | "expired";
+/** job_effective_status: hidden > closed(사유별 full·expired·closed) > expired > full > open */
+export type JobEffectiveStatus = "open" | "full" | "expired" | "closed" | "hidden";
+export type ApplicationStatusValue = "applied" | "selected" | "withdrawn" | "not_selected";
+export type DestinationKind = "domestic" | "overseas";
+
+/** list_public_jobs · get_job_summary 한 행(상세 설명·센터 상세 없음). date는 YYYY-MM-DD, time은 HH:MM:SS */
+export interface JobSummaryRow {
+  id: string;
+  owner_id: string;
+  center_name: string;
+  job_type: JobTypeValue;
+  title: string;
+  region: string;
+  venue: string | null;
+  class_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  work_days: string[] | null;
+  work_time: string | null;
+  tour_start: string | null;
+  tour_end: string | null;
+  destination: string | null;
+  destination_kind: DestinationKind | null;
+  covers_flight: boolean | null;
+  covers_lodging: boolean | null;
+  pay_amount: number | null;
+  pay_unit: PayUnitValue | null;
+  headcount: number;
+  /** 남은 인원(0 미만 없음) */
+  remaining: number;
+  requirement_tags: string[];
+  deadline: string;
+  view_count: number;
+  created_at: string;
+  edited_at: string | null;
+  effective_status: JobEffectiveStatus;
+}
+
+/** get_job_detail의 센터 상세(연락처 없음) */
+export interface JobDetailCenter {
+  center_name: string;
+  representative_name: string | null;
+  head_instructor: string | null;
+  instructor_count: number | null;
+  instructor_names: string[];
+  monthly_students: number | null;
+  teaching_days: string[];
+  teaching_time: string | null;
+  venues: string[];
+  address: string | null;
+  photo_paths: string[];
+}
+
+export interface JobDetailRow extends JobSummaryRow {
+  description: string;
+  center: JobDetailCenter;
+}
+
+/** get_public_facts: 종류별 유효 서류의 사실만(파일·번호 없음) */
+export interface PublicFactRow {
+  doc_type: DocTypeValue;
+  valid_until: string | null;
+  verified_at: string | null;
+  org: string | null;
+  grade: string | null;
+}
+
+/** get_center_public_profile: detail_visible=false면 상세 칸은 null */
+export interface CenterPublicProfileRow {
+  user_id: string;
+  center_name: string;
+  venues: string[];
+  teaching_days: string[];
+  teaching_time: string | null;
+  photo_paths: string[];
+  detail_visible: boolean;
+  representative_name: string | null;
+  head_instructor: string | null;
+  instructor_count: number | null;
+  instructor_names: string[] | null;
+  monthly_students: number | null;
+  address: string | null;
+}
+
+export interface CenterJobHistoryRow {
+  id: string;
+  title: string;
+  job_type: JobTypeValue;
+  pay_amount: number | null;
+  pay_unit: PayUnitValue | null;
+  created_at: string;
+  effective_status: JobEffectiveStatus;
+}
+
+/** create_job_post · update_job_post payload. 종류별 필수: lesson=class_date, tour=tour_start·tour_end·destination */
+export interface JobPostPayload {
+  job_type: JobTypeValue;
+  title: string;
+  region: string;
+  venue?: string | null;
+  class_date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  work_days?: string[];
+  work_time?: string | null;
+  tour_start?: string | null;
+  tour_end?: string | null;
+  destination?: string | null;
+  destination_kind?: DestinationKind | null;
+  covers_flight?: boolean;
+  covers_lodging?: boolean;
+  /** pay_amount·pay_unit 둘 다 null이면 협의 */
+  pay_amount?: number | null;
+  pay_unit?: PayUnitValue | null;
+  headcount: number;
+  requirement_tags?: string[];
+  description: string;
+  deadline: string;
+}
 
 export interface Database {
   public: {
@@ -301,6 +427,66 @@ export interface Database {
         };
         Relationships: [];
       };
+      app_settings: {
+        Row: { key: string; value: Json };
+        // 관리자만 쓴다(RLS)
+        Insert: { key: string; value: Json };
+        Update: { key?: string; value?: Json };
+        Relationships: [];
+      };
+      job_posts: {
+        Row: {
+          id: string;
+          owner_id: string;
+          center_id: string | null;
+          job_type: JobTypeValue;
+          title: string;
+          region: string;
+          venue: string | null;
+          class_date: string | null;
+          start_time: string | null;
+          end_time: string | null;
+          work_days: string[] | null;
+          work_time: string | null;
+          tour_start: string | null;
+          tour_end: string | null;
+          destination: string | null;
+          destination_kind: DestinationKind | null;
+          covers_flight: boolean | null;
+          covers_lodging: boolean | null;
+          pay_amount: number | null;
+          pay_unit: PayUnitValue | null;
+          headcount: number;
+          requirement_tags: string[];
+          description: string;
+          deadline: string;
+          status: JobPostStatus;
+          closed_reason: JobClosedReason | null;
+          view_count: number;
+          created_at: string;
+          edited_at: string | null;
+        };
+        // 직접 쓰기 불가 — create_job_post · update_job_post · close_job_post RPC로만
+        Insert: { [_ in never]: never };
+        Update: { [_ in never]: never };
+        Relationships: [];
+      };
+      job_applications: {
+        Row: {
+          id: string;
+          job_id: string;
+          instructor_id: string;
+          message: string | null;
+          status: ApplicationStatusValue;
+          created_at: string;
+          decided_at: string | null;
+        };
+        // 직접 쓰기 불가 — apply_to_job · withdraw_application · select_applicant RPC로만
+        Insert: { [_ in never]: never };
+        Update: { [_ in never]: never };
+        Relationships: [];
+      };
+      // job_views는 직접 접근 불가(record_job_view RPC로만) — 타입에 넣지 않는다
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -319,6 +505,35 @@ export interface Database {
         Args: { p_user: string; p_action: RequirementAction };
         Returns: boolean;
       };
+      can_view_job_detail: { Args: { p_job?: string | null }; Returns: boolean };
+      paid_mode: { Args: Record<string, never>; Returns: boolean };
+      list_public_jobs: {
+        Args: {
+          p_type?: JobTypeValue | null;
+          p_region?: string | null;
+          p_paid_only?: boolean;
+          p_limit?: number;
+          p_offset?: number;
+        };
+        Returns: JobSummaryRow[];
+      };
+      get_job_summary: { Args: { p_job: string }; Returns: JobSummaryRow[] };
+      get_job_detail: { Args: { p_job: string }; Returns: JobDetailRow[] };
+      record_job_view: { Args: { p_job: string; p_device_key?: string | null }; Returns: undefined };
+      get_public_facts: { Args: { p_user: string }; Returns: PublicFactRow[] };
+      get_center_public_profile: { Args: { p_center: string }; Returns: CenterPublicProfileRow[] };
+      list_center_job_history: { Args: { p_center: string }; Returns: CenterJobHistoryRow[] };
+      get_applicant_contact: {
+        Args: { p_app: string };
+        Returns: { phone: string | null; email: string | null }[];
+      };
+      expire_jobs: { Args: Record<string, never>; Returns: number };
+      create_job_post: { Args: { payload: JobPostPayload }; Returns: string };
+      update_job_post: { Args: { p_job: string; payload: JobPostPayload }; Returns: undefined };
+      close_job_post: { Args: { p_job: string }; Returns: undefined };
+      apply_to_job: { Args: { p_job: string; p_message?: string | null }; Returns: string };
+      withdraw_application: { Args: { p_app: string }; Returns: undefined };
+      select_applicant: { Args: { p_app: string }; Returns: undefined };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };
