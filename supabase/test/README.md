@@ -7,17 +7,19 @@ Supabase 대시보드 → **SQL Editor**에서 아래 순서로 실행한다.
 1. `supabase/migrations/20261021_001_foundation.sql` — 기반 스키마
 2. `supabase/migrations/20261022_002_hardening.sql` — 정지·퇴출 계정의 쓰기 차단, 서류 등록 조건 강화
 3. `supabase/migrations/20261022_003_multi_role.sql` — 한 계정 여러 역할(`profiles.roles`), 권한 확인을 roles로
+4. `supabase/migrations/20261023_004_pre_phase2.sql` — 2단계 전 정비: 회원 이름 노출 축소(`can_view_profile`), 유효 서류 규칙 하나로(`effective_doc`)
 
-각 파일 내용을 통째로 붙여 넣고 **Run**. 반드시 001 → 002 → 003 순서로 실행한다.
+각 파일 내용을 통째로 붙여 넣고 **Run**. 반드시 001 → 002 → 003 → 004 순서로 실행한다.
 여러 번 실행해도 괜찮다(이미 있는 테이블·정책은 건너뛰거나 다시 만든다).
 
-## 2. 보안 검사 (003까지 적용한 뒤)
+## 2. 보안 검사 (004까지 적용한 뒤)
 
 1. `supabase/test/phase1_checks.sql` → 성공하면 `phase1 ok`
 2. `supabase/test/phase1_hardening_checks.sql` → 성공하면 `hardening ok`
 3. `supabase/test/phase1_multirole_checks.sql` → 성공하면 `multirole ok`
+4. `supabase/test/phase2_pre_checks.sql` → 성공하면 `pre2 ok`
 
-전체 순서: 001 → 002 → 003 → phase1_checks → phase1_hardening_checks → phase1_multirole_checks
+전체 순서: 001 → 002 → 003 → 004 → phase1_checks → phase1_hardening_checks → phase1_multirole_checks → phase2_pre_checks
 
 각 파일 내용을 통째로 붙여 넣고 **Run**.
 
@@ -26,6 +28,7 @@ Supabase 대시보드 → **SQL Editor**에서 아래 순서로 실행한다.
 - 검사는 `begin … rollback` 안에서 돌기 때문에 테스트 계정·서류가 남지 않는다.
 - 보강 검사는 002가 적용되지 않았으면 실패한다(예: `banned_cannot_update_profile_name 실패`).
 - 여러 역할 검사는 003이 적용되지 않았으면 실패한다(`roles` 컬럼이 없다는 오류).
+- 2단계 전 정비 검사는 004가 적용되지 않았으면 실패한다(예: `instructor_cannot_list_other_instructors 실패`).
 
 ## 3. 관리자 지정 (한 번만)
 
