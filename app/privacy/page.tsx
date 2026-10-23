@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Fill, LegalPage, Section } from "@/components/legal/legal-page";
+import { Fill, LegalPage, Section } from "@/components/app-shell/legal/legal-page";
 import { BRAND } from "@/lib/brand";
 
 export const metadata: Metadata = { title: `개인정보처리방침 · ${BRAND.appName}` };

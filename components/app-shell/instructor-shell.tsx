@@ -2,16 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { Briefcase, FileText, Home, Inbox, Send } from "lucide-react";
-import { DocumentList } from "@/components/documents/document-list";
+import { DocumentList } from "@/components/verification/document-list";
 import { Button } from "@/components/ui/button";
-import { fetchMyInstructorProfile } from "@/lib/instructor/api";
-import { resumeCompleteness } from "@/lib/instructor/logic";
-import type { InstructorProfile } from "@/lib/instructor/types";
+import { fetchMyInstructorProfile } from "@/lib/talent-profile/api";
+import { resumeCompleteness } from "@/lib/talent-profile/logic";
+import type { InstructorProfile } from "@/lib/talent-profile/types";
 import { fetchMyDocuments } from "@/lib/verification/api";
 import { DOC_TYPES } from "@/lib/verification/config";
 import { displayStatus, latestByType, todayKst } from "@/lib/verification/logic";
-import { useAuth } from "@/lib/supabase/auth-provider";
-import { ResumeEditor } from "./resume-editor";
+import { useAuth } from "@/lib/app-shell/auth-provider";
+import { ResumeEditor } from "@/components/talent-profile/resume-editor";
 
 type Tab = "home" | "jobs" | "offers" | "applications" | "resume";
 

@@ -1,6 +1,6 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "./database.types";
-import { KEEP_LOGIN_KEY, isAuthStorageKey, parseKeepLogin, serializeKeepLogin } from "../account/keep-login";
+import { KEEP_LOGIN_KEY, isAuthStorageKey, parseKeepLogin, serializeKeepLogin } from "./keep-login";
 
 // 로그인 유지 설정에 따라 인증 세션을 localStorage(유지) 또는 sessionStorage(이 탭/세션만)에 둔다.
 // 설정은 localStorage의 aqua.keepLogin("1"/"0"). 모든 접근은 try/catch (사생활 보호 모드 등에서 throw 가능).

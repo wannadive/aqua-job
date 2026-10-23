@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Waves } from "lucide-react";
-import { INTRO_FINAL, INTRO_SLIDES } from "@/lib/intro/slides";
+import { INTRO_FINAL, INTRO_SLIDES } from "@/lib/app-shell/intro/slides";
 
 export type IntroChoice = "instructor" | "center" | "signup";
 

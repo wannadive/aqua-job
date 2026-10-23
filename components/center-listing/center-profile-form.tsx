@@ -5,10 +5,10 @@ import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchMyCenterProfile, saveCenterProfile } from "@/lib/center/api";
-import type { CenterProfile } from "@/lib/center/types";
-import { DAY_OPTIONS, TIME_OPTIONS } from "@/lib/instructor/config";
-import { avatarUrl, uploadAvatar } from "@/lib/storage/avatars";
+import { fetchMyCenterProfile, saveCenterProfile } from "@/lib/center-listing/api";
+import type { CenterProfile } from "@/lib/center-listing/types";
+import { DAY_OPTIONS, TIME_OPTIONS } from "@/lib/talent-profile/config";
+import { avatarUrl, uploadAvatar } from "@/lib/avatar/api";
 
 type Draft = Partial<CenterProfile>;
 

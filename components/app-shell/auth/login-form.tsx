@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BRAND } from "@/lib/brand";
-import { useAuth } from "@/lib/supabase/auth-provider";
+import { useAuth } from "@/lib/app-shell/auth-provider";
 
 export function LoginForm({ onSignup, isAdminEntry }: { onSignup?: () => void; isAdminEntry?: boolean }) {
   const { login } = useAuth();

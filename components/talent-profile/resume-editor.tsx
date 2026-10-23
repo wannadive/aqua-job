@@ -5,9 +5,9 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { fetchMyContacts, fetchMyInstructorProfile, saveInstructorProfile, saveMyContacts } from "@/lib/instructor/api";
-import { RESUME_STEPS } from "@/lib/instructor/logic";
-import type { PrivateContacts } from "@/lib/instructor/types";
+import { fetchMyContacts, fetchMyInstructorProfile, saveInstructorProfile, saveMyContacts } from "@/lib/talent-profile/api";
+import { RESUME_STEPS } from "@/lib/talent-profile/logic";
+import type { PrivateContacts } from "@/lib/talent-profile/types";
 import { StepInput, type Draft } from "./resume-fields";
 
 type StepKey = (typeof RESUME_STEPS)[number]["key"];

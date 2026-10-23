@@ -1,6 +1,6 @@
 "use client";
 
-import type { SignupInput } from "@/lib/account/types";
+import type { SignupInput } from "@/lib/app-shell/account/types";
 
 type Role = SignupInput["role"];
 

@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { SignupInput } from "@/lib/account/types";
-import { useAuth } from "@/lib/supabase/auth-provider";
+import type { SignupInput } from "@/lib/app-shell/account/types";
+import { useAuth } from "@/lib/app-shell/auth-provider";
 
 export function SignupForm({ role, onBack }: { role: SignupInput["role"]; onBack: () => void }) {
   const { signup } = useAuth();

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { normalizeRoles } from "@/lib/account/logic";
-import type { AccountRole } from "@/lib/account/types";
+import { normalizeRoles } from "@/lib/app-shell/account/logic";
+import type { AccountRole } from "@/lib/app-shell/account/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isSuperseded, purgeDecision } from "@/lib/verification/admin-logic";
 import type { DocType } from "@/lib/verification/types";

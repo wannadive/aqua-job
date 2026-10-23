@@ -1,20 +1,20 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { LoginForm } from "@/components/auth/login-form";
-import { SignupForm } from "@/components/auth/signup-form";
-import { SignupSelect } from "@/components/auth/signup-select";
-import { IntroSlides } from "@/components/intro/intro-slides";
-import { AdminShell } from "@/components/admin/admin-shell";
-import { BlockedScreen } from "@/components/shared/blocked-screen";
-import { ROLE_TABS_HEIGHT, RoleTabs } from "@/components/shared/role-tabs";
-import { CenterShell } from "@/components/center/center-shell";
-import { InstructorShell } from "@/components/instructor/instructor-shell";
-import { ResumeWizard } from "@/components/instructor/resume-wizard";
+import { LoginForm } from "@/components/app-shell/auth/login-form";
+import { SignupForm } from "@/components/app-shell/auth/signup-form";
+import { SignupSelect } from "@/components/app-shell/auth/signup-select";
+import { IntroSlides } from "@/components/app-shell/intro/intro-slides";
+import { AdminShell } from "@/components/app-shell/admin-shell";
+import { BlockedScreen } from "@/components/app-shell/blocked-screen";
+import { ROLE_TABS_HEIGHT, RoleTabs } from "@/components/app-shell/role-tabs";
+import { CenterShell } from "@/components/app-shell/center-shell";
+import { InstructorShell } from "@/components/app-shell/instructor-shell";
+import { ResumeWizard } from "@/components/talent-profile/resume-wizard";
 import { Button } from "@/components/ui/button";
-import { routeFor } from "@/lib/account/logic";
-import type { AccountRole, SignupInput } from "@/lib/account/types";
-import { useAuth } from "@/lib/supabase/auth-provider";
+import { routeFor } from "@/lib/app-shell/account/logic";
+import type { AccountRole, SignupInput } from "@/lib/app-shell/account/types";
+import { useAuth } from "@/lib/app-shell/auth-provider";
 
 const INTRO_KEY = "aqua.introSeen";
 
@@ -124,7 +124,7 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     case "blocked":
       return <BlockedScreen />;
     case "instructor-onboarding":
-      return withRoleTabs(<ResumeWizard />);
+      return withRoleTabs(<ResumeWizard onComplete={refreshAccount} />);
     case "instructor":
       return withRoleTabs(<InstructorShell />);
     case "center":

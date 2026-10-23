@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { getDeviceKey } from "@/lib/device-key";
+import { getDeviceKey } from "@/lib/jobs/device-key";
 import type { DocRecord } from "@/lib/verification/types";
 import { countApplications, jobErrorMessage } from "./logic";
 import {

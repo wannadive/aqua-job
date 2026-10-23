@@ -2,10 +2,10 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { createClient, setKeepLogin } from "./client";
-import { readActiveRole, writeActiveRole } from "@/lib/account/active-role";
-import { normalizeRoles, resolveActiveRole } from "@/lib/account/logic";
-import type { Account, AccountRole, AccountStatus, SignupInput } from "@/lib/account/types";
+import { createClient, setKeepLogin } from "@/lib/supabase/client";
+import { readActiveRole, writeActiveRole } from "@/lib/app-shell/account/active-role";
+import { normalizeRoles, resolveActiveRole } from "@/lib/app-shell/account/logic";
+import type { Account, AccountRole, AccountStatus, SignupInput } from "@/lib/app-shell/account/types";
 
 interface AuthContextType {
   user: Account | null;

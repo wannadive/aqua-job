@@ -1,4 +1,4 @@
-import { BRAND } from "../brand.ts";
+import { BRAND } from "../../brand.ts";
 
 // 도입부 문구 (스펙 §9-1). 줄바꿈은 \n.
 export const INTRO_SLIDES = [

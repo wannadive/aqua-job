@@ -1,7 +1,7 @@
 "use client";
 
-import { ROLE_ORDER } from "@/lib/account/logic";
-import type { AccountRole } from "@/lib/account/types";
+import { ROLE_ORDER } from "@/lib/app-shell/account/logic";
+import type { AccountRole } from "@/lib/app-shell/account/types";
 import { ROLE_LABEL } from "@/lib/verification/admin-logic";
 
 /** 탭 막대 높이(60px + 안전 영역). 아래 화면은 .min-h-app으로 이만큼 줄어든다 */

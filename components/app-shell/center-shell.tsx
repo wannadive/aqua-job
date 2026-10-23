@@ -3,16 +3,16 @@
 import { useEffect, useState } from "react";
 import { Briefcase, Home, Search, Settings, Users } from "lucide-react";
 import { toast } from "sonner";
-import { DocumentList } from "@/components/documents/document-list";
+import { DocumentList } from "@/components/verification/document-list";
 import { JobForm } from "@/components/jobs/job-form";
 import { MyJobs } from "@/components/jobs/my-jobs";
 import { summarize, useMyJobs } from "@/components/jobs/use-my-jobs";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/lib/supabase/auth-provider";
+import { useAuth } from "@/lib/app-shell/auth-provider";
 import { fetchMyDocuments } from "@/lib/verification/api";
 import { displayStatus, latestByType, todayKst } from "@/lib/verification/logic";
 import type { DocDisplayStatus } from "@/lib/verification/types";
-import { CenterProfileForm } from "./center-profile-form";
+import { CenterProfileForm } from "@/components/center-listing/center-profile-form";
 
 type Tab = "home" | "jobs" | "applicants" | "instructors" | "settings";
 

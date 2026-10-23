@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import { FileCheck, Settings, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { fetchMembers, type MemberRow } from "@/lib/account/admin-api";
+import { fetchMembers, type MemberRow } from "@/lib/app-shell/account/admin-api";
 import { kstDate, ROLE_LABEL } from "@/lib/verification/admin-logic";
-import { useAuth } from "@/lib/supabase/auth-provider";
-import { ReviewQueue } from "./review-queue";
+import { useAuth } from "@/lib/app-shell/auth-provider";
+import { ReviewQueue } from "@/components/verification/admin/review-queue";
 
 type Tab = "review" | "members" | "settings";
 

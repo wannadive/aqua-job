@@ -4,13 +4,12 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { StepQuestion } from "@/components/shared/step-question";
 import { Button } from "@/components/ui/button";
-import { fetchMyInstructorProfile, saveInstructorProfile } from "@/lib/instructor/api";
-import { RESUME_STEPS } from "@/lib/instructor/logic";
-import { useAuth } from "@/lib/supabase/auth-provider";
+import { fetchMyInstructorProfile, saveInstructorProfile } from "@/lib/talent-profile/api";
+import { RESUME_STEPS } from "@/lib/talent-profile/logic";
 import { StepInput, type Draft } from "./resume-fields";
 
-export function ResumeWizard() {
-  const { refreshAccount } = useAuth();
+// onComplete: 마지막 단계 저장 후 호출(셸이 계정 상태를 새로 읽음). 도메인은 셸을 import하지 않는다.
+export function ResumeWizard({ onComplete }: { onComplete: () => Promise<void> }) {
   const [index, setIndex] = useState(0);
   const [draft, setDraftState] = useState<Draft>({});
   const [loaded, setLoaded] = useState(false);
@@ -85,7 +84,7 @@ export function ResumeWizard() {
         }
       }
       if (isLast) {
-        await refreshAccount();
+        await onComplete();
         return;
       }
       setIndex((i) => i + 1);

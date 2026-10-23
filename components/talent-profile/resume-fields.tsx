@@ -5,13 +5,13 @@ import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { avatarUrl, uploadAvatar } from "@/lib/storage/avatars";
+import { avatarUrl, uploadAvatar } from "@/lib/avatar/api";
 import {
   AGE_BAND_OPTIONS, CERT_ORG_OPTIONS, DAY_OPTIONS, GENDER_OPTIONS, MBTI_OPTIONS,
   REGION_OPTIONS, SCOPE_OPTIONS, STYLE_TAG_OPTIONS, TIME_OPTIONS,
-} from "@/lib/instructor/config";
-import { formatRecords, METER_MAX, parseMeterInput, parseStaInput } from "@/lib/instructor/logic";
-import type { InstructorProfile, Records, ResumeStep, Scope } from "@/lib/instructor/types";
+} from "@/lib/talent-profile/config";
+import { formatRecords, METER_MAX, parseMeterInput, parseStaInput } from "@/lib/talent-profile/logic";
+import type { InstructorProfile, Records, ResumeStep, Scope } from "@/lib/talent-profile/types";
 
 export type Draft = Partial<InstructorProfile>;
 

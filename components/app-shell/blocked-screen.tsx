@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/lib/supabase/auth-provider";
+import { useAuth } from "@/lib/app-shell/auth-provider";
 
 export function BlockedScreen() {
   const { logout } = useAuth();
