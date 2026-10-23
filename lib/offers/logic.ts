@@ -40,18 +40,22 @@ export function offerErrorMessage(err: { code?: string | null; message?: string 
   if (code === "23505" || msg.includes("이미 제안했어요")) return "이 강사에게는 이 공고로 이미 제안했어요";
   if (msg.includes("다 보냈어요")) return `${msg} 다른 공고를 골라 주세요`;
   if (msg.includes("이미 지원한 강사")) return "이 강사는 이미 이 공고에 지원했어요. 지원자 탭에서 확인해 주세요";
-  if (msg.includes("모집 중인 공고로만") || msg.includes("모집이 끝난 공고")) return "모집이 끝난 공고예요. 목록을 새로 불러왔어요";
-  if (msg.includes("모집 인원이 다 찼어요")) return "모집 인원이 다 찼어요. 목록을 새로 불러왔어요";
+  if (msg.includes("모집 중인 공고로만") || msg.includes("모집이 끝난 공고")) return "모집이 끝난 공고예요. 다른 공고를 골라 주세요";
+  if (msg.includes("모집 인원이 다 찼어요")) return "모집 인원이 다 찼어요";
   if (msg.includes("제안할 수 있는 강사가 아니에요"))
     return "이 강사는 지금 제안을 받을 수 없어요(이력서 비공개 또는 이용 중지)";
-  if (msg.includes("답을 기다리는 제안만")) return "이미 답했거나 철회·마감된 제안이에요. 목록을 새로 불러왔어요";
-  if (msg.includes("제안을 찾을 수 없어요") || msg.includes("공고를 찾을 수 없어요"))
-    return "찾을 수 없거나 내려간 제안이에요. 목록을 새로 불러왔어요";
+  if (msg.includes("답을 기다리는 제안만")) return "이미 답했거나 철회·마감된 제안이에요";
+  // 서버가 무엇을 못 찾았는지(공고/제안)에 따라 — send_offer·respond_offer는 공고, withdraw·respond는 제안
+  if (msg.includes("공고를 찾을 수 없어요")) return "찾을 수 없거나 내려간 공고예요";
+  if (msg.includes("제안을 찾을 수 없어요")) return "찾을 수 없거나 내려간 제안이에요";
   if (msg.includes("구독")) return msg; // 서버가 어떤 구독이 필요한지 알려 준다
   if (msg.includes("서류")) return `${msg}. 설정에서 서류를 확인해 주세요`;
   if (msg.includes("활성 계정만")) return "이용이 멈춘 계정이에요. 관리자에게 문의해 주세요";
   return jobErrorMessage(err);
 }
+
+/** 강사가 제안을 수락할 때 확인 창 문구(그대로) */
+export const ACCEPT_CONFIRM = "수락하면 이 센터에 내 연락처가 열려요";
 
 /** 화면 필터 → browse_instructors p_filters. 빈 값은 넣지 않는다(서버가 지원하는 키만: 009). */
 export function buildBrowseFilters(f: InstructorFilterState): Record<string, unknown> {

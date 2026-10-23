@@ -30,7 +30,7 @@ export function MyJobs({
   onNew: () => void;
   onEdit: (job: JobSummary) => void;
   onApplicants: (job: JobSummary) => void;
-  onChanged: () => Promise<void> | void;
+  onChanged: () => Promise<unknown> | void;
 }) {
   const [view, setView] = useState<"open" | "closed">("open");
   const [closing, setClosing] = useState<JobSummary | null>(null);

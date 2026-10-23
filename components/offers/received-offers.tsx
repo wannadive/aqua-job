@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { formatMdKst } from "@/lib/jobs/logic";
 import { respondOffer } from "@/lib/offers/api";
-import { OFFER_STATUS_INSTRUCTOR, canAccept, canDecline, receivedGroup, type ReceivedGroup } from "@/lib/offers/logic";
+import { ACCEPT_CONFIRM, OFFER_STATUS_INSTRUCTOR, canAccept, canDecline, receivedGroup, type ReceivedGroup } from "@/lib/offers/logic";
 import type { ReceivedOffer } from "@/lib/offers/types";
 
 const GROUPS: { key: ReceivedGroup; label: string; empty: string }[] = [
@@ -17,9 +17,6 @@ const GROUPS: { key: ReceivedGroup; label: string; empty: string }[] = [
 ];
 
 const TONE = { ok: "bg-ok-bg text-ok", muted: "bg-surface text-muted", ink: "bg-surface text-ink" } as const;
-
-/** 수락 확인 창 문구(그대로) */
-export const ACCEPT_CONFIRM = "수락하면 이 센터에 내 연락처가 열려요";
 
 /**
  * 강사 [제안] 탭: 받은 제안 → 수락(확인 창)/거절(가벼운 확인).

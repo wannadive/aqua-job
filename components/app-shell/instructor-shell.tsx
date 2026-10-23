@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Briefcase, FileText, Home, Inbox, Send } from "lucide-react";
 import { DocumentList } from "@/components/verification/document-list";
 import { Button } from "@/components/ui/button";
@@ -207,6 +208,16 @@ export function InstructorShell() {
   const counts = baseCounts && { ...baseCounts, selected: baseCounts.selected + acceptedOffers.length };
   const pendingOffers = rec.loading || rec.error ? null : rec.offers.filter((o) => o.status === "offered").length;
   const [openJobId, setOpenJobId] = useState<string | null>(null);
+  // 이 공고로 받은 제안이 답 대기·수락이면 지원 대신 제안 탭으로(서버 apply_to_job도 막는다 — 화면은 안내만)
+  const startApply = (job: JobSummary) => {
+    const offer = rec.offers.find((o) => o.jobId === job.id && (o.status === "offered" || o.status === "accepted"));
+    if (offer) {
+      toast(offer.status === "offered" ? "이 공고로 받은 제안이 있어요. 받은 제안에서 답해 주세요" : "이 공고는 이미 제안을 수락했어요");
+      setTab("offers");
+      return;
+    }
+    setApplying(job);
+  };
   return (
     <div className="mx-auto min-h-app w-full max-w-md">
       <main className="px-5 pb-28 pt-8">
@@ -221,7 +232,7 @@ export function InstructorShell() {
             onOffers={() => setTab("offers")}
           />
         )}
-        {tab === "jobs" && <JobsBrowser key={openJobId ?? "list"} initialJobId={openJobId} onApply={setApplying} reloadKey={reloadKey} />}
+        {tab === "jobs" && <JobsBrowser key={openJobId ?? "list"} initialJobId={openJobId} onApply={startApply} reloadKey={reloadKey} />}
         {tab === "offers" && (
           <ReceivedOffers
             offers={rec.offers}

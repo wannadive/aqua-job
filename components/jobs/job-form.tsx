@@ -82,7 +82,7 @@ export function JobForm({
   /** 있으면 수정 */
   editJobId?: string | null;
   onClose: () => void;
-  onSaved: () => Promise<void> | void;
+  onSaved: () => Promise<unknown> | void;
   onSubmitDocs: () => void;
   /** 수정할 때 이미 채운 인원 = 선택 + 수락한 제안(모집 인원은 이보다 줄일 수 없다) */
   selectedCount?: number;

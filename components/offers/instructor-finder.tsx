@@ -199,6 +199,16 @@ export function InstructorFinder({
 
   const refreshAfterRefusal = useCallback(() => Promise.all([reloadJobs(), reloadOffers()]), [reloadJobs, reloadOffers]);
 
+  // 내 공고·보낸 제안을 읽기 전·실패 때는 제안 버튼을 막는다(한도·중복 안내 숫자가 틀리지 않게). 서버가 최종 판단.
+  const offerBlocked = jobsLoading || jobsError || offersLoading || offersError;
+  const offersNote = offersError && !jobsError && (
+    <div className="flex items-center justify-between gap-3 rounded-card bg-white p-4 text-sm text-muted shadow-sm">
+      보낸 제안을 불러오지 못해 지금은 제안할 수 없어요
+      <button type="button" onClick={() => void reloadOffers()} className="font-semibold text-ink underline">
+        다시 시도
+      </button>
+    </div>
+  );
   const offeredTo = (id: string) => offers.filter((o) => o.instructorId === id).length;
   const activeFilterCount = Object.keys(buildBrowseFilters(filters)).length;
 
@@ -207,6 +217,8 @@ export function InstructorFinder({
       instructor={composing}
       jobs={jobs}
       offers={offers}
+      offersUnavailable={offerBlocked}
+      onRetryOffers={() => void (jobsError ? onRetryJobs() : reloadOffers())}
       onClose={() => setComposing(null)}
       onSent={reloadOffers}
       onRefresh={refreshAfterRefusal}
@@ -225,13 +237,16 @@ export function InstructorFinder({
           name={resumeOf.name}
           onBack={() => setResumeOf(null)}
           actions={
-            <Button
-              className="h-[52px] w-full bg-ink text-base text-white"
-              disabled={jobsLoading || jobsError}
-              onClick={() => setComposing(resumeOf)}
-            >
-              공고 골라서 제안하기
-            </Button>
+            <>
+              {offersNote}
+              <Button
+                className="h-[52px] w-full bg-ink text-base text-white"
+                disabled={offerBlocked}
+                onClick={() => setComposing(resumeOf)}
+              >
+                공고 골라서 제안하기
+              </Button>
+            </>
           }
         />
         {composer}
@@ -270,9 +285,9 @@ export function InstructorFinder({
         <SentOffers
           offers={offers}
           jobs={jobs}
-          loading={jobsLoading || offersLoading}
-          error={offersError}
-          onRetry={() => void reloadOffers()}
+          loading={jobsLoading || (offersLoading && !jobsError)}
+          error={offersError || jobsError}
+          onRetry={() => (jobsError ? onRetryJobs() : void reloadOffers())}
           onResume={(o) => setResumeOf({ id: o.instructorId, name: o.instructorName ?? "강사" })}
           onApplicants={onApplicants}
           onChanged={reloadOffers}
@@ -292,6 +307,7 @@ export function InstructorFinder({
             />
           )}
 
+          {offersNote}
           {loading && <p className="py-10 text-center text-sm text-muted">불러오는 중…</p>}
           {!loading && error && (
             <div className="rounded-card bg-white p-5 text-sm text-muted shadow-sm">
@@ -313,7 +329,7 @@ export function InstructorFinder({
                 key={t.userId}
                 instructor={t}
                 offeredCount={offeredTo(t.userId)}
-                offerDisabled={jobsLoading || jobsError}
+                offerDisabled={offerBlocked}
                 onOpen={() => setResumeOf({ id: t.userId, name: t.displayName || "강사" })}
                 onOffer={() => setComposing({ id: t.userId, name: t.displayName || "강사" })}
               />

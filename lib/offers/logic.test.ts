@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   EMPTY_INSTRUCTOR_FILTERS,
+  ACCEPT_CONFIRM,
   OFFER_STATUS_CENTER,
   OFFER_STATUS_INSTRUCTOR,
   buildBrowseFilters,
@@ -32,6 +33,10 @@ test("상태 라벨: 다섯 상태 모두 한국어, 금지어 없음, 센터에
   assert.equal(OFFER_STATUS_CENTER.accepted.tone, "ok");
 });
 
+test("수락 확인 창 문구는 그대로", () => {
+  assert.equal(ACCEPT_CONFIRM, "수락하면 이 센터에 내 연락처가 열려요");
+});
+
 test("offerErrorMessage: 009 서버 오류 → 할 일을 알려 주는 문구", () => {
   assert.equal(
     offerErrorMessage({ code: "23505", message: "이 강사에게는 이 공고로 이미 제안했어요" }),
@@ -40,11 +45,15 @@ test("offerErrorMessage: 009 서버 오류 → 할 일을 알려 주는 문구",
   assert.match(offerErrorMessage({ code: "22023", message: "이 공고로 보낼 수 있는 제안(10건)을 다 보냈어요" }), /10건.*다른 공고/);
   assert.match(offerErrorMessage({ code: "22023", message: "이미 지원한 강사예요" }), /지원자 탭/);
   assert.match(offerErrorMessage({ code: "22023", message: "모집 중인 공고로만 제안할 수 있어요" }), /모집이 끝난/);
-  assert.match(offerErrorMessage({ code: "22023", message: "모집 인원이 다 찼어요" }), /다 찼어요.*새로/);
+  assert.match(offerErrorMessage({ code: "22023", message: "모집 인원이 다 찼어요" }), /다 찼어요/);
   assert.match(offerErrorMessage({ code: "22023", message: "모집이 끝난 공고예요" }), /모집이 끝난/);
   assert.match(offerErrorMessage({ code: "22023", message: "제안할 수 있는 강사가 아니에요" }), /비공개/);
   assert.match(offerErrorMessage({ code: "22023", message: "답을 기다리는 제안만 수락할 수 있어요" }), /이미 답했거나/);
-  assert.match(offerErrorMessage({ code: "P0002", message: "제안을 찾을 수 없어요" }), /찾을 수 없거나/);
+  assert.equal(offerErrorMessage({ code: "P0002", message: "제안을 찾을 수 없어요" }), "찾을 수 없거나 내려간 제안이에요");
+  assert.equal(offerErrorMessage({ code: "P0002", message: "공고를 찾을 수 없어요" }), "찾을 수 없거나 내려간 공고예요");
+  // 다시 불러오기 전에 "새로 불러왔어요"라고 말하지 않는다
+  for (const m of ["모집 중인 공고로만 제안할 수 있어요", "모집 인원이 다 찼어요", "답을 기다리는 제안만 수락할 수 있어요", "공고를 찾을 수 없어요"])
+    assert.doesNotMatch(offerErrorMessage({ code: "22023", message: m }), /불러왔어요/);
   assert.equal(
     offerErrorMessage({ code: "42501", message: "제안하려면 아쿠아잡 센터 구독이 필요해요" }),
     "제안하려면 아쿠아잡 센터 구독이 필요해요",

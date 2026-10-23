@@ -15,18 +15,21 @@ export function useMyJobs() {
   const [error, setError] = useState(false);
   const seq = useRef(0);
 
-  const reload = useCallback(async () => {
+  /** 새로 읽은 공고를 돌려준다(실패·옛 응답이면 null) — 호출한 쪽이 갓 읽은 상태로 판단할 수 있게 */
+  const reload = useCallback(async (): Promise<JobSummary[] | null> => {
     const my = ++seq.current;
     setError(false);
     try {
       const res = await listMyJobs();
       const c = await fetchMyApplicantCounts(res.jobs.map((j) => j.id));
-      if (my !== seq.current) return;
+      if (my !== seq.current) return null;
       setJobs(res.jobs);
       setCounts(c);
       if (res.failed > 0) toast.error(`공고 ${res.failed}개를 불러오지 못했어요. 새로고침해 보세요`);
+      return res.jobs;
     } catch {
       if (my === seq.current) setError(true);
+      return null;
     } finally {
       if (my === seq.current) setLoading(false);
     }

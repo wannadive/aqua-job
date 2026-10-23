@@ -35,6 +35,7 @@ export function Applicants({
   onChanged,
   acceptedOffers = [],
   offersError = false,
+  offersLoading = false,
   onRetryOffers,
 }: {
   jobs: JobSummary[];
@@ -44,8 +45,10 @@ export function Applicants({
   /** null = 전체 */
   jobFilter: string | null;
   onJobFilterChange: (jobId: string | null) => void;
-  /** 선택 뒤 공고·현황 숫자(·제안) 다시 불러오기 */
-  onChanged: () => Promise<unknown> | void;
+  /** 선택 뒤 공고·현황 숫자(·제안) 다시 불러오기. 새로 읽은 공고를 돌려주면 마감 안내를 그것으로 판단한다 */
+  onChanged: () => Promise<JobSummary[] | null | void> | void;
+  /** 제안 수락 강사 목록을 읽는 중 */
+  offersLoading?: boolean;
   /** 내 공고로 보낸 제안 중 수락된 것(009) */
   acceptedOffers?: Offer[];
   offersError?: boolean;
@@ -113,11 +116,10 @@ export function Applicants({
       setSelecting(null);
       toast.success("선택했어요. 연락처가 열렸어요");
       setContactOpen((s) => new Set(s).add(target.id));
-      // 서버는 (선택 + 수락한 제안)이 인원에 닿으면 같은 처리 안에서 마감한다 — 누르기 전 숫자로 안내
-      const job = jobById.get(target.jobId);
-      const filledNow = job ? filledCount(job) + 1 : 0;
-      await Promise.all([reload(), onChanged()]);
-      if (job && filledNow >= job.headcount) {
+      // 마감 안내는 선택 뒤 새로 읽은 공고 상태로만 판단한다(누르기 전 숫자로 추측하지 않음)
+      const [, fresh] = await Promise.all([reload(), onChanged()]);
+      const job = Array.isArray(fresh) ? fresh.find((j) => j.id === target.jobId) : undefined;
+      if (job && job.status !== "open") {
         toast("모집 인원이 다 차서 공고가 마감됐어요");
       }
     } finally {
@@ -132,7 +134,7 @@ export function Applicants({
     );
   }
 
-  const listLoading = jobsLoading || (loading && !error);
+  const listLoading = jobsLoading || (loading && !error) || (offersLoading && !jobsError);
 
   return (
     <div className="space-y-4">

@@ -171,7 +171,11 @@ export function CenterShell() {
   );
   const reloadJobs = my.reload;
   const reloadOffers = sent.reload;
-  const reloadBoth = useCallback(() => Promise.all([reloadJobs(), reloadOffers()]), [reloadJobs, reloadOffers]);
+  // 새로 읽은 공고를 돌려준다(지원자 탭이 마감 안내를 갓 읽은 상태로 판단)
+  const reloadBoth = useCallback(async () => {
+    const [jobs] = await Promise.all([reloadJobs(), reloadOffers()]);
+    return jobs;
+  }, [reloadJobs, reloadOffers]);
   const editJob = overlay?.kind === "edit" ? my.jobs.find((j) => j.id === overlay.jobId) : undefined;
 
   if (overlay) {
@@ -231,6 +235,7 @@ export function CenterShell() {
             onChanged={reloadBoth}
             acceptedOffers={sent.offers.filter((o) => o.status === "accepted")}
             offersError={sent.error && !my.loading && !my.error}
+            offersLoading={sent.loading}
             onRetryOffers={() => void sent.reload()}
           />
         )}
