@@ -28,8 +28,9 @@ function json(status: number, body: Record<string, unknown>) {
 export async function POST(req: Request) {
   const secret = process.env.PUSH_FLUSH_SECRET;
   if (!secret) {
+    // 설정 전에도 밖에서는 비밀값 불일치와 똑같이 보이게(설정 여부를 알리지 않는다)
     console.error("[push-flush] PUSH_FLUSH_SECRET not configured");
-    return json(500, { error: "not_configured" });
+    return json(401, { error: "unauthorized" });
   }
   if (!secretMatches(req.headers.get(PUSH_FLUSH_SECRET_HEADER), secret)) {
     return json(401, { error: "unauthorized" });

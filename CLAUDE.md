@@ -27,7 +27,7 @@ components/
   ui/           shadcn
 lib/
   app-shell/    셸: auth-provider.tsx(useAuth), account/, intro/
-  jobs/ verification/ talent-profile/ center-listing/ avatar/ notifications/   도메인 모듈 (types·logic·api·mappers)
+  jobs/ verification/ talent-profile/ center-listing/ avatar/ notifications/ offers/ moderation/   도메인 모듈 (types·logic·api·mappers)
   supabase/     client.ts, admin.ts, database.types.ts, keep-login.ts (공용, 위치 유지)
   brand.ts      브랜드 값(이름·태그라인)은 여기서만 읽기
   image.ts      이미지 압축 (compressImage)
