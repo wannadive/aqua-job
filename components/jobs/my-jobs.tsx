@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
+import { FOCUS_MISSING_TEXT, focusRing, useFocusItem, type FocusRequest } from "@/components/shared/use-focus-item";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { closeJob } from "@/lib/jobs/api";
@@ -21,7 +22,10 @@ export function MyJobs({
   onEdit,
   onApplicants,
   onChanged,
+  focusJob = null,
 }: {
+  /** 알림에서 온 공고(숨김 알림 등) — 그 묶음(진행중/마감)을 열고 강조 */
+  focusJob?: FocusRequest | null;
   jobs: JobSummary[];
   counts: ApplicantCounts;
   loading: boolean;
@@ -35,6 +39,18 @@ export function MyJobs({
   const [view, setView] = useState<"open" | "closed">("open");
   const [closing, setClosing] = useState<JobSummary | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const highlight = useFocusItem(
+    focusJob,
+    !loading && !error,
+    (id) => {
+      const j = jobs.find((x) => x.id === id);
+      if (!j) return false;
+      setView(j.status === "open" ? "open" : "closed");
+      return true;
+    },
+    FOCUS_MISSING_TEXT,
+  );
 
   const list = jobs.filter((j) => (view === "open" ? j.status === "open" : j.status !== "open"));
 
@@ -93,7 +109,8 @@ export function MyJobs({
       {list.map((job) => {
         const c = counts.get(job.id) ?? { applied: 0, selected: 0, total: 0 };
         return (
-          <JobCard key={job.id} job={job} showStatus extra={`${c.total}명 지원 · 선택·수락 ${filledCount(job)}/${job.headcount}`}>
+          <div key={job.id} data-focus-id={job.id} className={focusRing(highlight === job.id)}>
+          <JobCard job={job} showStatus extra={`${c.total}명 지원 · 선택·수락 ${filledCount(job)}/${job.headcount}`}>
             <div className="grid grid-cols-2 gap-2">
               <Button variant="outline" className="h-11 border-line text-base" onClick={() => onApplicants(job)}>
                 지원자 보기{c.applied > 0 ? ` (${c.applied})` : ""}
@@ -110,6 +127,7 @@ export function MyJobs({
               )}
             </div>
           </JobCard>
+          </div>
         );
       })}
 

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { FOCUS_MISSING_TEXT, focusRing, useFocusItem, type FocusRequest } from "@/components/shared/use-focus-item";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { withdrawApplication } from "@/lib/jobs/api";
 import { applicationGroup, formatMdKst, type ApplicationGroup } from "@/lib/jobs/logic";
@@ -32,8 +33,11 @@ export function MyApplications({
   onOpenJob,
   onChanged,
   acceptedOffers = [],
+  focusJob = null,
 }: {
   apps: MyApplication[];
+  /** 알림에서 온 공고(id = 공고 id) — 그 지원이 있는 묶음을 열고 강조 */
+  focusJob?: FocusRequest | null;
   /** 수락한 제안(009) — 선택·수락 묶음에 "제안 수락"으로 함께 보인다 */
   acceptedOffers?: ReceivedOffer[];
   loading: boolean;
@@ -45,6 +49,24 @@ export function MyApplications({
   const [group, setGroup] = useState<ApplicationGroup>("applied");
   const [cancelling, setCancelling] = useState<MyApplication | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const highlight = useFocusItem(
+    focusJob,
+    !loading && !error,
+    (jobId) => {
+      const app = apps.find((a) => a.jobId === jobId && a.status !== "withdrawn") ?? apps.find((a) => a.jobId === jobId);
+      if (app) {
+        setGroup(applicationGroup(app));
+        return true;
+      }
+      if (acceptedOffers.some((o) => o.jobId === jobId && o.status === "accepted")) {
+        setGroup("selected");
+        return true;
+      }
+      return false;
+    },
+    FOCUS_MISSING_TEXT,
+  );
 
   const grouped = apps.filter((a) => applicationGroup(a) === group);
   const offersHere = group === "selected" ? acceptedOffers.filter((o) => o.status === "accepted") : [];
@@ -117,18 +139,19 @@ export function MyApplications({
               {o.job?.centerName ?? "센터"}의 제안을 수락했어요. 이 센터에 내 연락처가 열렸어요
             </p>
           );
-          if (!o.job) {
-            return (
-              <article key={`o:${o.id}`} className="rounded-card bg-white p-5 shadow-sm">
-                <div className="text-sm font-semibold">{chipEl}</div>
-                <p className="mt-2 text-sm text-muted">내려간 공고예요</p>
-              </article>
-            );
-          }
           return (
-            <JobCard key={`o:${o.id}`} job={o.job} onOpen={() => onOpenJob(o.jobId)} extra={chipEl}>
-              {note}
-            </JobCard>
+            <div key={`o:${o.id}`} data-focus-id={o.jobId} className={focusRing(highlight === o.jobId)}>
+              {!o.job ? (
+                <article className="rounded-card bg-white p-5 shadow-sm">
+                  <div className="text-sm font-semibold">{chipEl}</div>
+                  <p className="mt-2 text-sm text-muted">내려간 공고예요</p>
+                </article>
+              ) : (
+                <JobCard job={o.job} onOpen={() => onOpenJob(o.jobId)} extra={chipEl}>
+                  {note}
+                </JobCard>
+              )}
+            </div>
           );
         })}
 
@@ -162,25 +185,25 @@ export function MyApplications({
           </>
         );
         const hasActions = a.status === "selected" || a.status === "applied";
-        if (!a.job) {
-          return (
-            <article key={a.id} className="rounded-card bg-white p-5 shadow-sm">
-              <div className="text-sm font-semibold">{chipEl}</div>
-              <p className="mt-2 text-sm text-muted">내려간 공고예요</p>
-              {hasActions && <div className="mt-3">{actions}</div>}
-            </article>
-          );
-        }
         return (
-          <JobCard
-            key={a.id}
-            job={a.job}
-            dimmed={a.job.status !== "open" && a.status !== "selected"}
-            onOpen={() => onOpenJob(a.jobId)}
-            extra={chipEl}
-          >
-            {hasActions ? actions : undefined}
-          </JobCard>
+          <div key={a.id} data-focus-id={a.jobId} className={focusRing(highlight === a.jobId)}>
+            {!a.job ? (
+              <article className="rounded-card bg-white p-5 shadow-sm">
+                <div className="text-sm font-semibold">{chipEl}</div>
+                <p className="mt-2 text-sm text-muted">내려간 공고예요</p>
+                {hasActions && <div className="mt-3">{actions}</div>}
+              </article>
+            ) : (
+              <JobCard
+                job={a.job}
+                dimmed={a.job.status !== "open" && a.status !== "selected"}
+                onOpen={() => onOpenJob(a.jobId)}
+                extra={chipEl}
+              >
+                {hasActions ? actions : undefined}
+              </JobCard>
+            )}
+          </div>
         );
       })}
 

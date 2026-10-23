@@ -14,7 +14,7 @@ const DOMAIN_DIRS = [
   "lib/talent-profile", "components/talent-profile",
   "lib/center-listing", "components/center-listing",
   "lib/avatar",
-  "lib/notifications",
+  "lib/notifications", "components/notifications",
   "lib/offers", "components/offers",
   "components/centers",
 ];

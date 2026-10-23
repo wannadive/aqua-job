@@ -55,3 +55,16 @@ export async function removePushSubscription(endpoint: string): Promise<{ error?
   const { error } = await (createClient().from("aqua_push_subscriptions") as any).delete().eq("endpoint", endpoint);
   return error ? { error: "알림을 끄지 못했어요" } : {};
 }
+
+/**
+ * 이 기기 구독 주소가 서버에 내 행으로 있는지(RLS: 내 행만 보인다).
+ * 오류는 던진다(모를 때 브라우저 구독을 함부로 지우지 않게).
+ */
+export async function isMyPushSubscription(endpoint: string): Promise<boolean> {
+  const { data, error } = await (createClient().from("aqua_push_subscriptions") as any)
+    .select("id")
+    .eq("endpoint", endpoint)
+    .limit(1);
+  if (error) throw new Error("알림 상태를 확인하지 못했어요");
+  return Array.isArray(data) && data.length > 0;
+}

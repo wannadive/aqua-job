@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { PushSettingsCard } from "@/components/notifications/push-settings-card";
+import type { FocusRequest } from "@/components/shared/use-focus-item";
+import type { NavIntent } from "@/lib/notifications/link";
 import { toast } from "sonner";
 import { Briefcase, FileText, Home, Inbox, Send } from "lucide-react";
 import { DocumentList } from "@/components/verification/document-list";
@@ -23,6 +26,9 @@ import { ReceivedOffers } from "@/components/offers/received-offers";
 import { useReceivedOffers } from "@/components/offers/use-offers";
 
 type Tab = "home" | "jobs" | "offers" | "applications" | "resume";
+
+/** 알림에서 온 이동 요청(셸 라우터가 준다). seq가 바뀔 때마다 한 번 적용한다 */
+export type InstructorNav = Extract<NavIntent, { role: "instructor" }> & { seq: number };
 
 const TABS: { key: Tab; label: string; icon: typeof Home }[] = [
   { key: "home", label: "홈", icon: Home },
@@ -190,6 +196,8 @@ function HomeTab({
         {docs && docs.expiring > 0 && <p className="mt-3 text-sm font-medium text-warn">곧 만료 {docs.expiring}건</p>}
       </section>
 
+      <PushSettingsCard />
+
       <button type="button" onClick={() => void logout()} className="w-full py-3 text-center text-sm font-medium text-muted">
         로그아웃
       </button>
@@ -197,7 +205,7 @@ function HomeTab({
   );
 }
 
-export function InstructorShell() {
+export function InstructorShell({ nav = null, onNavConsumed }: { nav?: InstructorNav | null; onNavConsumed?: () => void } = {}) {
   const [tab, setTab] = useState<Tab>("home");
   const [applying, setApplying] = useState<JobSummary | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -208,6 +216,37 @@ export function InstructorShell() {
   const counts = baseCounts && { ...baseCounts, selected: baseCounts.selected + acceptedOffers.length };
   const pendingOffers = rec.loading || rec.error ? null : rec.offers.filter((o) => o.status === "offered").length;
   const [openJobId, setOpenJobId] = useState<string | null>(null);
+  const [focusOffer, setFocusOffer] = useState<FocusRequest | null>(null);
+  const mountedRef = useRef(false);
+  const [focusJob, setFocusJob] = useState<FocusRequest | null>(null);
+
+  // 알림 → 탭 이동 + 해당 항목. 이동한 화면의 데이터만 다시 불러온다(알림은 화면을 연 뒤에 왔을 수 있다).
+  useEffect(() => {
+    if (!nav) return;
+    // 방금 열린 화면이면(역할 전환) 훅들이 이미 처음 불러오는 중이라 다시 부르지 않는다
+    const fresh = !mountedRef.current;
+    setApplying(null);
+    setFocusOffer(nav.tab === "offers" && nav.offerId ? { id: nav.offerId, seq: nav.seq } : null);
+    setFocusJob(nav.tab === "applications" && nav.jobId ? { id: nav.jobId, seq: nav.seq } : null);
+    if (!fresh && nav.tab === "offers") void rec.reload();
+    if (!fresh && nav.tab === "applications") void Promise.all([my.reload(), rec.reload()]);
+    if (nav.tab === "jobs") {
+      setOpenJobId(nav.jobId);
+      if (!fresh) setReloadKey((n) => n + 1);
+    }
+    setTab(nav.tab);
+    onNavConsumed?.();
+  }, [nav]); // eslint-disable-line react-hooks/exhaustive-deps -- nav가 바뀔 때만 한 번
+
+  useEffect(() => {
+    mountedRef.current = true;
+  }, []);
+
+  // 다른 탭으로 나가면 강조 요청을 버린다(돌아와도 다시 강조·안내하지 않게)
+  useEffect(() => {
+    if (tab !== "offers") setFocusOffer(null);
+    if (tab !== "applications") setFocusJob(null);
+  }, [tab]);
   // 이 공고로 받은 제안이 답 대기·수락이면 지원 대신 제안 탭으로(서버 apply_to_job도 막는다 — 화면은 안내만)
   const startApply = (job: JobSummary) => {
     const offer = rec.offers.find((o) => o.jobId === job.id && (o.status === "offered" || o.status === "accepted"));
@@ -244,6 +283,7 @@ export function InstructorShell() {
               setTab("jobs");
             }}
             onChanged={rec.reload}
+            focus={focusOffer}
           />
         )}
         {tab === "applications" && (
@@ -258,6 +298,7 @@ export function InstructorShell() {
             }}
             onChanged={my.reload}
             acceptedOffers={acceptedOffers}
+            focusJob={focusJob}
           />
         )}
         {tab === "resume" && (

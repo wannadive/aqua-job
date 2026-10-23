@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Briefcase, FileCheck, Settings, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { PushSettingsCard } from "@/components/notifications/push-settings-card";
 import { fetchMembers, type MemberRow } from "@/lib/app-shell/account/admin-api";
 import { kstDate, ROLE_LABEL } from "@/lib/verification/admin-logic";
 import { useAuth } from "@/lib/app-shell/auth-provider";
@@ -92,6 +93,7 @@ function SettingsTab() {
           로그아웃
         </Button>
       </section>
+      <PushSettingsCard />
     </div>
   );
 }

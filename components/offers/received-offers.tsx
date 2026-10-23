@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { JobCard } from "@/components/jobs/job-card";
 import { Button } from "@/components/ui/button";
+import { FOCUS_MISSING_TEXT, focusRing, useFocusItem, type FocusRequest } from "@/components/shared/use-focus-item";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { formatMdKst } from "@/lib/jobs/logic";
 import { respondOffer } from "@/lib/offers/api";
@@ -29,8 +30,11 @@ export function ReceivedOffers({
   onRetry,
   onOpenJob,
   onChanged,
+  focus = null,
 }: {
   offers: ReceivedOffer[];
+  /** 알림에서 온 제안 — 그 묶음을 열고 강조 */
+  focus?: FocusRequest | null;
   loading: boolean;
   error: boolean;
   onRetry: () => void;
@@ -42,6 +46,18 @@ export function ReceivedOffers({
   const [confirm, setConfirm] = useState<{ offer: ReceivedOffer; accept: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+
+  const highlight = useFocusItem(
+    focus,
+    !loading && !error,
+    (id) => {
+      const o = offers.find((x) => x.id === id);
+      if (!o) return false;
+      setGroup(receivedGroup(o));
+      return true;
+    },
+    FOCUS_MISSING_TEXT,
+  );
 
   const grouped = offers.filter((o) => receivedGroup(o) === group);
   const meta = GROUPS.find((g) => g.key === group)!;
@@ -153,18 +169,14 @@ export function ReceivedOffers({
               )}
             </div>
           );
-          if (!o.job) {
-            return (
-              <article key={o.id} className="rounded-card bg-white p-5 shadow-sm">
-                <div className="text-sm font-semibold">{chip}</div>
-                <p className="mt-2 text-sm text-muted">내려간 공고예요</p>
-                <div className="mt-3">{body}</div>
-              </article>
-            );
-          }
-          return (
+          const card = !o.job ? (
+            <article className="rounded-card bg-white p-5 shadow-sm">
+              <div className="text-sm font-semibold">{chip}</div>
+              <p className="mt-2 text-sm text-muted">내려간 공고예요</p>
+              <div className="mt-3">{body}</div>
+            </article>
+          ) : (
             <JobCard
-              key={o.id}
               job={o.job}
               showStatus
               dimmed={o.status !== "offered" && o.status !== "accepted"}
@@ -173,6 +185,11 @@ export function ReceivedOffers({
             >
               {body}
             </JobCard>
+          );
+          return (
+            <div key={o.id} data-focus-id={o.id} className={focusRing(highlight === o.id)}>
+              {card}
+            </div>
           );
         })}
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { FOCUS_MISSING_TEXT, focusRing, useFocusItem, type FocusRequest } from "@/components/shared/use-focus-item";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { listApplicantsForJobs, selectApplicant } from "@/lib/jobs/api";
 import { canSelect, filterApplicants, formatAppliedAt } from "@/lib/jobs/applicants";
@@ -37,8 +38,11 @@ export function Applicants({
   offersError = false,
   offersLoading = false,
   onRetryOffers,
+  focusApp = null,
 }: {
   jobs: JobSummary[];
+  /** 알림에서 온 지원(새 지원자) — 강조 */
+  focusApp?: FocusRequest | null;
   jobsLoading: boolean;
   jobsError: boolean;
   onRetryJobs: () => void;
@@ -98,6 +102,12 @@ export function Applicants({
   const visible = filterApplicants(apps, { jobId: jobFilter });
   const visibleOffers = acceptedOffers.filter((o) => o.status === "accepted" && (jobFilter === null || o.jobId === jobFilter));
   const filteredJob = jobFilter ? jobById.get(jobFilter) : undefined;
+  const highlight = useFocusItem(
+    focusApp,
+    !jobsLoading && !jobsError && !loading && !error,
+    (id) => visible.some((a) => a.id === id),
+    FOCUS_MISSING_TEXT,
+  );
 
   const doSelect = async () => {
     const target = selecting;
@@ -256,7 +266,11 @@ export function Applicants({
           const selectable = canSelect(a, job, job ? filledCount(job) : 0);
           const showContact = a.status === "selected" && contactOpen.has(a.id);
           return (
-            <article key={a.id} className="rounded-card bg-white p-5 shadow-sm">
+            <article
+              key={a.id}
+              data-focus-id={a.id}
+              className={`rounded-card bg-white p-5 shadow-sm ${focusRing(highlight === a.id)}`}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="truncate text-lg font-bold text-ink">{a.applicantName ?? "지원자"}</h2>

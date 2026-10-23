@@ -70,7 +70,10 @@ lib/verification/ + components/verification/       서류 확인 (document-*, fa
 lib/talent-profile/ + components/talent-profile/   강사 이력서 (resume-*)
 lib/center-listing/ + components/center-listing/   센터 소개 (center-profile-form)
 lib/avatar/api.ts                                  아바타 업로드/URL
-lib/notifications/                                 앱 안 알림·푸시 구독 API, 발송 순수 로직(flush.ts) — 화면은 Task 6
+lib/notifications/ + components/notifications/     앱 안 알림(종·목록·모두 읽음)·푸시 켜기/끄기·로그아웃 때 구독 정리,
+                                                   링크 해석·역할 화면 연결(link.ts), 발송 순수 로직(flush.ts).
+                                                   합칠 때 WD notifications·push_*와 병합(4절) — 셸은 NotificationsProvider·NotificationBar·
+                                                   NotificationPanel만 끼우고, 이동은 셸이 onOpenLink로 받는다
 lib/offers/ + components/offers/                   강사 둘러보기·제안(보내기·철회·수락/거절) — 연락처 카드는 components/jobs/applicant-contact 공용
 ```
 
@@ -78,6 +81,7 @@ lib/offers/ + components/offers/                   강사 둘러보기·제안(�
 ```
 lib/supabase/ (client, admin, database.types, keep-login)   lib/brand.ts   lib/image.ts   lib/utils.ts
 components/ui/ (shadcn)
+components/shared/ (step-question, use-focus-item — 알림에서 온 항목 찾아 강조)
 components/shared/step-question.tsx   공용 UI 조각 (셸·도메인 어디서든 import 가능)
 ```
 

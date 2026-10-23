@@ -1,6 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { PushSettingsCard } from "@/components/notifications/push-settings-card";
+import type { FocusRequest } from "@/components/shared/use-focus-item";
+import type { NavIntent } from "@/lib/notifications/link";
 import { Briefcase, Home, Search, Settings, Users } from "lucide-react";
 import { DocumentList } from "@/components/verification/document-list";
 import { Applicants } from "@/components/jobs/applicants";
@@ -18,6 +21,9 @@ import { useSentOffers } from "@/components/offers/use-offers";
 import { filledCount } from "@/lib/offers/logic";
 
 type Tab = "home" | "jobs" | "applicants" | "instructors" | "settings";
+
+/** 알림에서 온 이동 요청(셸 라우터가 준다). seq가 바뀔 때마다 한 번 적용한다 */
+export type CenterNav = Extract<NavIntent, { role: "center" }> & { seq: number };
 
 const TABS: { key: Tab; label: string; icon: typeof Home }[] = [
   { key: "home", label: "홈", icon: Home },
@@ -151,13 +157,14 @@ function SettingsTab() {
       <h1 className="text-[26px] font-bold tracking-tight text-ink">설정</h1>
       <CenterProfileForm />
       <DocumentList owner="center" />
+      <PushSettingsCard />
     </div>
   );
 }
 
 type Overlay = { kind: "new" } | { kind: "edit"; jobId: string } | null;
 
-export function CenterShell() {
+export function CenterShell({ nav = null, onNavConsumed }: { nav?: CenterNav | null; onNavConsumed?: () => void } = {}) {
   const [tab, setTab] = useState<Tab>("home");
   const [overlay, setOverlay] = useState<Overlay>(null);
   // 지원자 탭의 공고 필터(null = 전체). 공고 카드 [지원자 보기]는 그 공고로 연다.
@@ -177,6 +184,38 @@ export function CenterShell() {
     return jobs;
   }, [reloadJobs, reloadOffers]);
   const editJob = overlay?.kind === "edit" ? my.jobs.find((j) => j.id === overlay.jobId) : undefined;
+  const [focusApp, setFocusApp] = useState<FocusRequest | null>(null);
+  const [focusJob, setFocusJob] = useState<FocusRequest | null>(null);
+  // 지원자 탭을 알림으로 열 때마다 새로 그려 지원 목록을 다시 읽게 한다
+  const [applicantsKey, setApplicantsKey] = useState(0);
+  const mountedRef = useRef(false);
+
+  // 알림 → 탭 이동 + 해당 항목. 이동한 화면의 데이터만 다시 불러온다.
+  useEffect(() => {
+    if (!nav) return;
+    // 방금 열린 화면이면(역할 전환) 훅들이 이미 처음 불러오는 중이라 다시 부르지 않는다
+    const fresh = !mountedRef.current;
+    setOverlay(null);
+    setFocusApp(nav.tab === "applicants" && nav.appId ? { id: nav.appId, seq: nav.seq } : null);
+    setFocusJob(nav.tab === "jobs" && nav.jobId ? { id: nav.jobId, seq: nav.seq } : null);
+    if (nav.tab === "applicants") {
+      setApplicantJob(nav.jobId);
+      setApplicantsKey(nav.seq);
+      if (!fresh) void reloadBoth();
+    }
+    if (!fresh && nav.tab === "jobs") void reloadJobs();
+    setTab(nav.tab);
+    onNavConsumed?.();
+  }, [nav]); // eslint-disable-line react-hooks/exhaustive-deps -- nav가 바뀔 때만 한 번
+
+  useEffect(() => {
+    mountedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (tab !== "applicants") setFocusApp(null);
+    if (tab !== "jobs") setFocusJob(null);
+  }, [tab]);
 
   if (overlay) {
     return (
@@ -222,10 +261,13 @@ export function CenterShell() {
               setTab("applicants");
             }}
             onChanged={my.reload}
+            focusJob={focusJob}
           />
         )}
         {tab === "applicants" && (
           <Applicants
+            key={applicantsKey}
+            focusApp={focusApp}
             jobs={my.jobs}
             jobsLoading={my.loading}
             jobsError={my.error}

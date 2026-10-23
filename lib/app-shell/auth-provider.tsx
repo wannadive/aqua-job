@@ -6,6 +6,8 @@ import { createClient, setKeepLogin } from "@/lib/supabase/client";
 import { readActiveRole, writeActiveRole } from "@/lib/app-shell/account/active-role";
 import { normalizeRoles, resolveActiveRole } from "@/lib/app-shell/account/logic";
 import type { Account, AccountRole, AccountStatus, SignupInput } from "@/lib/app-shell/account/types";
+import { detachPushForLogout, unsubscribeLocalPush } from "@/lib/notifications/push-client";
+import { logoutWithPushCleanup } from "@/lib/notifications/push-state";
 
 interface AuthContextType {
   user: Account | null;
@@ -142,6 +144,8 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       setTimeout(async () => {
         if (cancelled) return;
         if (!session?.user) {
+          // 이 탭 밖(다른 탭·세션 만료)에서 로그아웃됨: 앞 계정 푸시가 이 기기에 계속 오지 않게 브라우저 구독 해제
+          if (userIdRef.current) void unsubscribeLocalPush();
           requestRef.current++;
           userIdRef.current = null;
           setUser(null);
@@ -150,6 +154,8 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         if (event === "TOKEN_REFRESHED" && userIdRef.current === session.user.id) return;
+        // 다른 계정으로 바뀜: 앞 계정의 서버 구독 행은 지울 수 없으니(내 행만 지워짐) 브라우저 구독을 해제해 그 주소를 죽인다
+        if (userIdRef.current && userIdRef.current !== session.user.id) void unsubscribeLocalPush();
         const ok = await loadAccount(session.user.id);
         if (cancelled) return;
         if (!ok) toast.error("계정 정보를 불러오지 못했어요. 다시 시도해 주세요");
@@ -192,7 +198,12 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
   );
 
   const logout = useCallback(async () => {
-    const { error } = await supabase.auth.signOut();
+    // 로그인 상태일 때 이 기기 푸시 구독을 서버에서 먼저 지운다(공용 폰에 앞 사람 알림이 계속 오지 않게).
+    // 최대 2.5초만 기다리고, 실패·오프라인이어도 로그아웃은 계속한다.
+    const { error } = await logoutWithPushCleanup({
+      detachPush: detachPushForLogout,
+      signOut: () => supabase.auth.signOut(),
+    });
     if (error) {
       toast.error("로그아웃하지 못했어요. 다시 시도해 주세요");
       return;
