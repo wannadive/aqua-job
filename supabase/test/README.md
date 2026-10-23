@@ -74,16 +74,16 @@ Supabase 대시보드 → **SQL Editor**에서 아래 순서로 실행한다.
 2. **키·비밀값 만들기**(로컬 터미널, 한 번만 — 값은 저장소에 커밋하지 않는다)
    - VAPID 키: `npx web-push generate-vapid-keys` → Public Key / Private Key
    - 발송 비밀값: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`
-3. **Vercel 환경 변수**(Production과 Preview 둘 다) — 넣은 뒤 다시 배포
+3. **Vercel 환경 변수**(Production과 Preview 둘 다) — 넣은 뒤 **반드시 다시 배포**(Redeploy). `NEXT_PUBLIC_VAPID_PUBLIC_KEY`는 빌드 때 앱에 들어가므로 다시 배포하지 않으면 알림 받기가 켜지지 않는다.
    - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` = Public Key
    - `VAPID_PRIVATE_KEY` = Private Key
    - `VAPID_SUBJECT` = `mailto:운영자@이메일`
    - `PUSH_FLUSH_SECRET` = 2번의 비밀값
    - (`SUPABASE_SERVICE_ROLE_KEY`는 이미 있어야 한다 — 발송 API가 쓴다)
-4. **DB 발송 설정**(SQL Editor, 도메인과 비밀값만 바꿔 실행) — 비밀값은 Vercel `PUSH_FLUSH_SECRET`과 **똑같이**. 주소는 반드시 `https://`:
+4. **DB 발송 설정**(SQL Editor, 비밀값만 바꿔 실행. 아쿠아잡 배포 주소는 `https://aqua-job.vercel.app`) — 비밀값은 Vercel `PUSH_FLUSH_SECRET`과 **똑같이**. 주소는 반드시 `https://`:
    ```sql
    insert into public.aqua_push_config (key, value) values
-     ('flush_url', 'https://<아쿠아잡 배포 도메인>/api/push/flush'),
+     ('flush_url', 'https://aqua-job.vercel.app/api/push/flush'),
      ('flush_secret', '<PUSH_FLUSH_SECRET 값>')
    on conflict (key) do update set value = excluded.value;
    ```
