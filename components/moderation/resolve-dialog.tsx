@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { adminResolveReport } from "@/lib/moderation/api";
-import { NOTE_MAX, charCount, confirmText, memoInputError } from "@/lib/moderation/logic";
+import { NOTE_MAX, charCount, confirmText, isNetworkErrorText, memoInputError } from "@/lib/moderation/logic";
 
 export interface ResolveRequest {
   reportId: string;
@@ -55,9 +55,18 @@ export function ResolveReportDialog({
     }
     running.current = true;
     setBusy(true);
+    setFormError(null);
     const res = await adminResolveReport(request.reportId, request.status, memo);
     if (res.error) {
       toast.error(res.error);
+      // 네트워크 오류·메모 길이: 창을 열어 둔 채 쓴 메모를 지킨다
+      if (isNetworkErrorText(res.error) || res.error.includes("500자")) {
+        if (!mounted.current) return;
+        setFormError(res.error);
+        running.current = false;
+        setBusy(false);
+        return;
+      }
     } else {
       toast.success(request.status === "resolved" ? "신고를 '조치함'으로 닫았어요" : "신고를 기각했어요");
     }

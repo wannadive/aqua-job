@@ -16,14 +16,17 @@ import {
   blockedReasonFromBody,
   canActOnAccount,
   canHideJob,
+  canUnhideJob,
   charCount,
   cleanNote,
   confirmText,
   formatKstDateTime,
+  isNetworkErrorText,
   memoInputError,
   noteRequired,
   noteVisibilityHint,
   reportErrorMessage,
+  unhideDoneText,
   violationInputError,
   violationLabel,
   violationNotice,
@@ -142,7 +145,7 @@ test("확인 창 문구: 퇴출은 하는 일 그대로, 다시 활성은 되돌
   assert.equal(confirmText("resolve").confirm, "처리 완료");
   assert.equal(confirmText("dismiss").confirm, "기각");
 
-  const all: ModerationAction[] = ["hide_job", "suspend", "ban", "reactivate", "resolve", "dismiss"];
+  const all: ModerationAction[] = ["hide_job", "unhide_job", "suspend", "ban", "reactivate", "resolve", "dismiss"];
   for (const a of all) {
     const c = confirmText(a, { reason: "other", note: "x" });
     for (const s of [c.title, c.confirm, ...c.lines]) assert.doesNotMatch(s, BANNED);
@@ -214,6 +217,7 @@ test("adminReportFromRow: 정상 행 변환, 모르는 값은 버림", () => {
     target_center_name: "바다센터",
     target_job_status: "open" as const,
     target_account_status: "active" as const,
+    target_is_admin: true,
     target_open_reports: 3,
     reason: "false_posting" as const,
     note: null,
@@ -226,6 +230,8 @@ test("adminReportFromRow: 정상 행 변환, 모르는 값은 버림", () => {
   const r = adminReportFromRow(row);
   assert.ok(r);
   assert.equal(r.targetOpenReports, 3);
+  assert.equal(r.targetIsAdmin, true);
+  assert.equal(adminReportFromRow({ ...row, target_is_admin: undefined as never })?.targetIsAdmin, false);
   assert.equal(r.targetJobStatus, "open");
   assert.equal(r.reason, "false_posting");
   assert.equal(adminReportFromRow({ ...row, target_type: "x" as never }), null);
@@ -237,4 +243,59 @@ test("adminReportFromRow: 정상 행 변환, 모르는 값은 버림", () => {
   assert.equal(odd.targetJobStatus, null);
   assert.equal(odd.targetOpenReports, 0);
   assert.equal(odd.targetUserId, null);
+});
+
+test("012 후속: 다시 보이기 문구·버튼, 다시 활성 문구는 이전 상태에 따라, 다시 활성 알림 안내", () => {
+  const un = confirmText("unhide_job", { targetName: "주말 강사" });
+  assert.equal(un.confirm, "다시 보이기");
+  assert.ok(un.lines.some((l) => l.includes("모집 중으로") && l.includes("마감으로")));
+  assert.ok(un.lines.some((l) => l.includes("되돌아오지 않아요")));
+  assert.ok(!un.lines.some((l) => l.startsWith("당사자에게 보이는 사유")));
+  // 숨김 문구: 이제 다시 보이기가 있다
+  assert.ok(confirmText("hide_job").lines.some((l) => l.includes("[다시 보이기]")));
+  assert.ok(!confirmText("hide_job").lines.some((l) => l.includes("아직 없어요")));
+
+  const fromSus = confirmText("reactivate", { fromStatus: "suspended" });
+  const fromBan = confirmText("reactivate", { fromStatus: "banned" });
+  assert.ok(fromSus.lines.some((l) => l.includes("지운 것은 없어요")));
+  assert.ok(!fromSus.lines.some((l) => l.includes("되돌아오지 않아요")));
+  assert.ok(fromBan.lines.some((l) => l.includes("되돌아오지 않아요") && l.includes("[다시 보이기]")));
+  for (const c of [fromSus, fromBan]) {
+    assert.ok(c.lines.includes("당사자에게 '이용이 다시 가능해졌어요' 알림이 가요"));
+    assert.ok(!c.lines.some((l) => l.includes("알림이 가지 않아요")));
+  }
+
+  assert.equal(canUnhideJob({ status: "hidden", ownerId: "c1" }, "me"), true);
+  assert.equal(canUnhideJob({ status: "hidden", ownerId: "me" }, "me"), false);
+  assert.equal(canUnhideJob({ status: "hidden", ownerId: "c1", ownerIsAdmin: true }, "me"), false);
+  assert.equal(canUnhideJob({ status: "open", ownerId: "c1" }, "me"), false);
+  assert.equal(canUnhideJob({ status: "hidden", ownerId: "c1" }, null), false);
+  assert.equal(canActOnAccount({ id: "a", isAdmin: true }, "me"), false);
+  assert.equal(canActOnAccount({ id: "a", isAdmin: false }, "me"), true);
+
+  assert.match(unhideDoneText("open"), /모집 중/);
+  assert.match(unhideDoneText("closed"), /마감/);
+  assert.match(adminErrorMessage({ code: "22023", message: "숨긴 공고가 아니에요" }), /이미 보이는 공고/);
+  assert.match(
+    adminErrorMessage({ code: "42501", message: "공고 주인 계정이 이용 중지 상태예요. 먼저 계정을 다시 활성으로 바꿔 주세요" }),
+    /회원 탭/,
+  );
+  assert.match(adminErrorMessage({ code: "42501", message: "내 공고·관리자 계정의 공고는 다시 보이게 할 수 없어요" }), /관리자 계정/);
+
+  assert.equal(isNetworkErrorText(adminErrorMessage({ message: "Failed to fetch" })), true);
+  assert.equal(isNetworkErrorText("이미 처리된 신고예요"), false);
+  assert.equal(isNetworkErrorText(null), false);
+});
+
+test("012 SQL: 알림 종류·다시 활성 알림·target_is_admin·다시 보이기 함수가 있다", () => {
+  const sql = readFileSync(resolve(ROOT, "supabase/migrations/20261030_012_moderation_followups.sql"), "utf8");
+  assert.ok(sql.startsWith("-- ⚠️ 아쿠아잡 프로젝트(cmtwlcsqpczuvtpysadi)의 SQL Editor에서 실행"));
+  assert.ok(sql.includes("function public.admin_unhide_job(p_job uuid, p_note text default null)"));
+  assert.ok(sql.includes("target_is_admin boolean"));
+  assert.ok(sql.includes("drop function if exists public.admin_list_reports(text, int, int);"));
+  assert.ok(sql.includes("'account_reactivated'"));
+  // 조용히 하기에서 다시 활성 알림을 뺀다(011은 다시 활성 때도 quiet_user를 켠다)
+  assert.ok(sql.includes("if p_kind not in ('account_suspended', 'account_banned', 'account_reactivated')"));
+  // $ 하나짜리가 없다(함수 본문은 $$로만)
+  assert.equal(sql.replaceAll("$$", "").includes("$"), false);
 });

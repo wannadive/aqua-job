@@ -133,7 +133,7 @@ export function AdminShell() {
     <div className="mx-auto min-h-app w-full max-w-md">
       <main className="px-5 pb-28 pt-8">
         {tab === "review" && <ReviewQueue />}
-        {tab === "jobs" && <AdminJobs />}
+        {tab === "jobs" && <AdminJobs key={adminId ?? "none"} adminId={adminId} />}
         {tab === "reports" && adminId && <AdminReports key={adminId} adminId={adminId} />}
         {tab === "members" && <MembersTab key={adminId ?? "none"} adminId={adminId} />}
         {tab === "settings" && <SettingsTab />}

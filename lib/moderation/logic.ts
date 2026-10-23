@@ -154,6 +154,9 @@ export function adminErrorMessage(err: Err): string {
   if (msg.includes("관리자만")) return "관리자 권한이 확인되지 않아요. 다시 로그인해 주세요";
   if (msg.includes("이미 숨긴 공고")) return "이미 숨긴 공고예요. 신고는 [처리 완료]로 닫아 주세요";
   if (msg.includes("이미 그 상태")) return "이미 그 상태인 계정이에요. 목록을 새로 불러왔어요";
+  if (msg.includes("숨긴 공고가 아니에요")) return "이미 보이는 공고예요. 목록을 새로 불러왔어요";
+  if (msg.includes("먼저 계정을 다시 활성으로"))
+    return "공고 주인 계정이 정지·퇴출 상태예요. 회원 탭에서 먼저 다시 활성으로 바꿔 주세요";
   if (msg.includes("이미 처리한 신고")) return "이미 처리된 신고예요(다른 관리자가 먼저 처리했을 수 있어요). 목록을 새로 불러왔어요";
   if (msg.includes("내 계정은 바꿀 수 없어요")) return "내 계정은 바꿀 수 없어요";
   if (msg.includes("관리자 계정")) return "관리자 계정이나 그 공고에는 조치할 수 없어요";
@@ -177,12 +180,18 @@ export interface ConfirmText {
 }
 
 /**
- * 조치 확인 창 문구. 서버(011)가 실제로 하는 일을 그대로 적는다.
+ * 조치 확인 창 문구. 서버(011·012)가 실제로 하는 일을 그대로 적는다.
  * reason·note를 주면 당사자에게 보이는 사유(violationNotice)를 함께 보여 준다.
+ * fromStatus: 다시 활성 전 상태(정지 → 바뀐 것 없음, 퇴출 → 숨긴 공고 등은 그대로).
  */
 export function confirmText(
   action: ModerationAction,
-  ctx: { targetName?: string | null; reason?: ViolationReason | null; note?: string | null } = {},
+  ctx: {
+    targetName?: string | null;
+    reason?: ViolationReason | null;
+    note?: string | null;
+    fromStatus?: AccountStatusValue | null;
+  } = {},
 ): ConfirmText {
   const name = ctx.targetName?.trim() || null;
   const notice = ctx.reason ? `당사자에게 보이는 사유: ${violationNotice(ctx.reason, ctx.note)}` : null;
@@ -195,9 +204,20 @@ export function confirmText(
           "공고 숨김 · 남은 지원 미선택 · 답을 기다리던 제안 마감",
           "이미 선택한 지원·수락한 제안은 그대로예요(열린 연락처는 상대방 기록에 남아요)",
           "공고 주인에게 사유 알림이 가요",
-          "다시 보이게 하는 버튼은 아직 없어요",
+          "나중에 [다시 보이기]로 되돌릴 수 있지만, 미선택된 지원·마감된 제안은 되돌아오지 않아요",
         ]),
         confirm: "공고 숨김",
+      };
+    case "unhide_job":
+      return {
+        title: name ? `'${name}' 공고를 다시 보이게 할까요?` : "공고를 다시 보이게 할까요?",
+        lines: [
+          "마감일이 남고 인원이 차지 않았으면 모집 중으로, 아니면 마감으로 돌아와요(숨기기 전에 마감이었으면 마감 그대로)",
+          "숨길 때 미선택된 지원·마감된 제안은 되돌아오지 않아요",
+          "공고 주인에게 '공고가 다시 보여요' 알림이 가요",
+          "공고 주인 계정이 활성일 때만 돼요",
+        ],
+        confirm: "다시 보이기",
       };
     case "suspend":
       return {
@@ -215,7 +235,7 @@ export function confirmText(
         lines: withNotice([
           "모집 중 공고 숨김 · 남은 지원 미선택 · 보낸/받은 제안 마감 · 계정 차단",
           "당사자에게는 계정 알림 하나만 가요(상대방에게는 마감·미선택 알림이 가요)",
-          "나중에 다시 활성으로 바꿔도 숨긴 공고·마감된 지원·제안은 되돌아오지 않아요",
+          "나중에 다시 활성으로 바꿔도 마감된 지원·제안은 되돌아오지 않고, 숨긴 공고는 [다시 보이기]로 하나씩만 돌아와요",
         ]),
         confirm: "퇴출",
       };
@@ -224,8 +244,12 @@ export function confirmText(
         title: name ? `${name} 계정을 다시 활성으로 바꿀까요?` : "계정을 다시 활성으로 바꿀까요?",
         lines: [
           "앱을 다시 쓸 수 있어요",
-          "숨긴 공고·마감된 지원·제안은 되돌아오지 않아요",
-          "당사자에게 따로 알림이 가지 않아요",
+          ctx.fromStatus === "banned"
+            ? "퇴출 때 숨긴 공고·마감된 지원·제안은 되돌아오지 않아요(공고는 공고 탭·신고 탭의 [다시 보이기]로 하나씩)"
+            : ctx.fromStatus === "suspended"
+              ? "정지 동안 지운 것은 없어요 · 공고·이력서가 다시 공개돼요"
+              : "퇴출이었다면 숨긴 공고·마감된 지원·제안은 되돌아오지 않아요",
+          "당사자에게 '이용이 다시 가능해졌어요' 알림이 가요",
         ],
         confirm: "다시 활성",
       };
@@ -247,11 +271,34 @@ export function confirmText(
 // ---------- 어떤 버튼을 보일지(안내용 — 최종 판단은 서버) ----------
 
 /** 이 계정에 조치 버튼을 보일지: 나 자신 · 관리자 계정은 숨긴다(서버도 42501로 막는다) */
-export function canActOnAccount(target: { id: string | null; roles?: readonly string[] | null }, adminId: string | null): boolean {
+export function canActOnAccount(
+  target: { id: string | null; roles?: readonly string[] | null; isAdmin?: boolean },
+  adminId: string | null,
+): boolean {
   if (!target.id || !adminId) return false;
   if (target.id === adminId) return false;
-  if (target.roles?.includes("admin")) return false;
+  if (target.isAdmin || target.roles?.includes("admin")) return false;
   return true;
+}
+
+/** 공고 다시 보이기 버튼: 숨긴 공고 · 내 공고 아님 · 관리자 계정의 공고 아님(서버가 최종 관문) */
+export function canUnhideJob(
+  job: { status: string | null | undefined; ownerId: string | null; ownerIsAdmin?: boolean },
+  adminId: string | null,
+): boolean {
+  if (job.status !== "hidden" || !adminId) return false;
+  if (job.ownerId === adminId || job.ownerIsAdmin) return false;
+  return true;
+}
+
+/** 다시 보이기 결과(서버가 돌려준 저장 상태) → 안내 */
+export function unhideDoneText(status: string | null | undefined): string {
+  return status === "open" ? "공고를 다시 보이게 했어요 · 모집 중" : "공고를 다시 보이게 했어요 · 마감 상태";
+}
+
+/** 네트워크 오류 안내인지(창을 닫지 않고 입력을 지킨 채 다시 누르게 한다) */
+export function isNetworkErrorText(msg: string | null | undefined): boolean {
+  return !!msg && msg.startsWith("네트워크 연결을 확인");
 }
 
 /** 현재 상태에서 할 수 있는 계정 조치(같은 상태로는 못 바꾼다) */

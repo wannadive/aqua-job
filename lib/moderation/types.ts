@@ -26,6 +26,8 @@ export interface AdminReport {
   targetCenterName: string | null;
   targetJobStatus: JobStatusValue | null;
   targetAccountStatus: AccountStatusValue | null;
+  /** 대상 계정이 관리자인지(012) — 조치 버튼을 숨긴다(서버가 최종 관문) */
+  targetIsAdmin: boolean;
   targetOpenReports: number;
   reason: ViolationReason;
   note: string | null;
@@ -36,4 +38,4 @@ export interface AdminReport {
 }
 
 /** 관리자 조치 종류(확인 창 문구·버튼 라벨) */
-export type ModerationAction = "hide_job" | "suspend" | "ban" | "reactivate" | "resolve" | "dismiss";
+export type ModerationAction = "hide_job" | "unhide_job" | "suspend" | "ban" | "reactivate" | "resolve" | "dismiss";

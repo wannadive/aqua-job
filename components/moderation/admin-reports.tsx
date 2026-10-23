@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { fetchAccountRoles, listAdminReports } from "@/lib/moderation/api";
+import { listAdminReports } from "@/lib/moderation/api";
 import {
   ACCOUNT_STATUS_LABEL,
   REPORT_STATUS_LABEL,
@@ -10,6 +10,7 @@ import {
   accountActionsFor,
   canActOnAccount,
   canHideJob,
+  canUnhideJob,
   formatKstDateTime,
   violationLabel,
 } from "@/lib/moderation/logic";
@@ -33,8 +34,6 @@ const JOB_STATUS_TEXT: Record<JobStatusValue, string> = {
 
 const PAGE = 200;
 
-type Roles = { state: "loading" } | { state: "error" } | { state: "ok"; byId: Map<string, string[]> };
-
 /**
  * 관리자 [신고] 탭. 관리자 역할 화면에서만 그린다(셸이 정한다) — 권한은 서버(admin_list_reports 등, is_admin)가 확인한다.
  * 이 화면을 떠나거나(역할 전환·로그아웃) 계정이 바뀌면 컴포넌트가 사라지며 목록도 함께 버려진다.
@@ -43,7 +42,6 @@ export function AdminReports({ adminId }: { adminId: string }) {
   const [filter, setFilter] = useState<ReportStatus>("open");
   const [rows, setRows] = useState<AdminReport[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [roles, setRoles] = useState<Roles>({ state: "loading" });
   const [action, setAction] = useState<(ActionRequest & { key: number }) | null>(null);
   const [resolving, setResolving] = useState<(ResolveRequest & { key: number }) | null>(null);
   const reqSeq = useRef(0);
@@ -57,14 +55,6 @@ export function AdminReports({ adminId }: { adminId: string }) {
       const list = await listAdminReports(status, PAGE);
       if (seq !== reqSeq.current) return;
       setRows(list);
-      // 관리자 계정 · 나 자신에게는 조치 버튼을 숨기려고 대상 계정 역할을 읽는다(서버도 막는다)
-      setRoles({ state: "loading" });
-      try {
-        const byId = await fetchAccountRoles(list.map((r) => r.targetUserId ?? "").filter(Boolean));
-        if (seq === reqSeq.current) setRoles({ state: "ok", byId });
-      } catch {
-        if (seq === reqSeq.current) setRoles({ state: "error" });
-      }
     } catch (e) {
       if (seq !== reqSeq.current) return;
       setLoadError(e instanceof Error ? e.message : "신고 목록을 불러오지 못했어요");
@@ -121,17 +111,9 @@ export function AdminReports({ adminId }: { adminId: string }) {
         </div>
       ) : (
         <>
-          {roles.state === "error" && (
-            <p className="rounded-xl bg-warn-bg p-3 text-sm text-warn">
-              대상 계정 정보를 불러오지 못해 조치 버튼을 숨겼어요.
-              <button type="button" onClick={() => void reload()} className="ml-2 font-semibold underline">
-                다시 시도
-              </button>
-            </p>
-          )}
           <ul className="space-y-3">
             {rows.map((r) => (
-              <ReportCard key={r.id} report={r} roles={roles} adminId={adminId} onAction={openAction} onResolve={openResolve} />
+              <ReportCard key={r.id} report={r} adminId={adminId} onAction={openAction} onResolve={openResolve} />
             ))}
           </ul>
           {rows.length >= PAGE && <p className="text-center text-xs text-muted">최근 {PAGE}건까지 보여요</p>}
@@ -155,25 +137,25 @@ function Chip({ children, tone = "muted" }: { children: React.ReactNode; tone?: 
 
 function ReportCard({
   report: r,
-  roles,
   adminId,
   onAction,
   onResolve,
 }: {
   report: AdminReport;
-  roles: Roles;
   adminId: string;
   onAction: (req: ActionRequest) => void;
   onResolve: (req: ResolveRequest) => void;
 }) {
   const title = r.targetTitle ?? (r.targetType === "job" ? "(지워진 공고)" : "(이름 없음)");
-  const targetRoles = roles.state === "ok" && r.targetUserId ? (roles.byId.get(r.targetUserId) ?? null) : null;
-  // 역할을 확인한 대상만 조치 버튼(관리자 계정·나 자신은 숨김). 확인 못 하면 숨긴다 — 서버가 최종 관문.
-  const actionable = roles.state === "ok" && targetRoles !== null && canActOnAccount({ id: r.targetUserId, roles: targetRoles }, adminId);
-  const protectedTarget = roles.state === "ok" && r.targetUserId !== null && !actionable;
+  // 관리자 계정 · 나 자신이 대상이면 조치 버튼을 숨긴다(target_is_admin, 012). 서버가 최종 관문(42501).
+  const actionable = canActOnAccount({ id: r.targetUserId, isAdmin: r.targetIsAdmin }, adminId);
+  const protectedTarget = r.targetUserId !== null && !actionable;
   const isOpen = r.status === "open";
   const reportRef = { id: r.id, targetType: r.targetType, targetId: r.targetId, openCount: r.targetOpenReports };
-  const accountActions = r.targetType === "job" ? [] : accountActionsFor(r.targetAccountStatus).filter((a) => a !== "reactivate");
+  // 계정 조치: 강사·센터 대상은 그 계정, 공고 대상은 공고 주인(센터) 계정. 다시 활성은 회원 탭에서.
+  const accountActions = accountActionsFor(r.targetAccountStatus).filter((a) => a !== "reactivate");
+  const ownerName = r.targetType === "job" ? (r.targetCenterName ?? "공고 주인") : title;
+  const unhide = r.targetType === "job" && canUnhideJob({ status: r.targetJobStatus, ownerId: r.targetUserId, ownerIsAdmin: r.targetIsAdmin }, adminId);
 
   return (
     <li className="rounded-card bg-white p-5 shadow-sm">
@@ -219,7 +201,13 @@ function ReportCard({
 
       {isOpen && (
         <div className="mt-4 space-y-2">
-          {protectedTarget && <p className="text-xs text-muted">관리자 계정 · 내 계정이 대상이라 조치 버튼이 없어요</p>}
+          {protectedTarget && (
+            <p className="text-xs text-muted">
+              {r.targetUserId === adminId ? "내 계정" : "관리자 계정"}
+              {r.targetType === "job" ? "의 공고라" : "이 대상이라"} 숨김·정지·퇴출 버튼이 없어요
+            </p>
+          )}
+          {r.targetUserId === null && <p className="text-xs text-muted">대상이 지워져 처리 완료·기각만 할 수 있어요</p>}
           {actionable && (
             <div className="flex flex-wrap gap-2">
               {r.targetType === "job" && canHideJob(r.targetJobStatus) && (
@@ -238,10 +226,16 @@ function ReportCard({
                     variant="outline"
                     className={`h-11 border-line ${a === "ban" ? "text-warn" : ""}`}
                     onClick={() =>
-                      onAction({ action: a, targetId: r.targetUserId as string, targetName: title, report: reportRef })
+                      onAction({
+                        action: a,
+                        targetId: r.targetUserId as string,
+                        targetName: ownerName,
+                        fromStatus: r.targetAccountStatus,
+                        report: reportRef,
+                      })
                     }
                   >
-                    {a === "suspend" ? "정지" : "퇴출"}
+                    {r.targetType === "job" ? (a === "suspend" ? "주인 계정 정지" : "주인 계정 퇴출") : a === "suspend" ? "정지" : "퇴출"}
                   </Button>
                 ))}
             </div>
@@ -254,6 +248,19 @@ function ReportCard({
               기각
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* 숨긴 공고는 신고를 닫은 뒤에도 다시 보이게 할 수 있다(012) */}
+      {unhide && (
+        <div className="mt-3">
+          <Button
+            variant="outline"
+            className="h-11 w-full border-line"
+            onClick={() => onAction({ action: "unhide_job", targetId: r.targetId, targetName: title, report: null })}
+          >
+            공고 다시 보이기
+          </Button>
         </div>
       )}
     </li>

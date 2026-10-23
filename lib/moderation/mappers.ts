@@ -33,6 +33,7 @@ export function adminReportFromRow(row: Partial<AdminReportRow> | null | undefin
     targetCenterName: str(row.target_center_name),
     targetJobStatus: jobStatus && JOB_STATUSES.has(jobStatus) ? (jobStatus as JobStatusValue) : null,
     targetAccountStatus: accountStatus && ACCOUNT_STATUSES.has(accountStatus) ? (accountStatus as AccountStatusValue) : null,
+    targetIsAdmin: row.target_is_admin === true,
     targetOpenReports: Number.isFinite(open) && open > 0 ? Math.floor(open) : 0,
     reason: row.reason,
     note: str(row.note),

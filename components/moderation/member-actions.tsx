@@ -35,7 +35,7 @@ export function MemberActions({
             key={a}
             variant="outline"
             className={`h-10 border-line px-4 text-sm ${a === "ban" ? "text-warn" : ""}`}
-            onClick={() => setReq({ action: a, targetId: member.id, targetName: member.displayName, key: ++seq.current })}
+            onClick={() => setReq({ action: a, targetId: member.id, targetName: member.displayName, fromStatus: member.accountStatus, key: ++seq.current })}
           >
             {LABEL[a]}
           </Button>

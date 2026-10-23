@@ -9,6 +9,7 @@ import {
   adminHideJob,
   adminResolveReport,
   adminSetAccountStatus,
+  adminUnhideJob,
   resolveOpenReportsForTarget,
 } from "@/lib/moderation/api";
 import {
@@ -16,21 +17,25 @@ import {
   accountStatusFor,
   charCount,
   confirmText,
+  isNetworkErrorText,
   memoInputError,
   noteVisibilityHint,
+  unhideDoneText,
   violationInputError,
   violationLabel,
 } from "@/lib/moderation/logic";
-import type { ReportTargetType, ViolationReason } from "@/lib/moderation/types";
+import type { AccountStatusValue, ReportTargetType, ViolationReason } from "@/lib/moderation/types";
 import { ViolationFields } from "./violation-fields";
 
-export type AdminAction = "hide_job" | "suspend" | "ban" | "reactivate";
+export type AdminAction = "hide_job" | "unhide_job" | "suspend" | "ban" | "reactivate";
 
 export interface ActionRequest {
   action: AdminAction;
-  /** hide_job = 공고 id, 그 밖 = 회원 id */
+  /** hide_job · unhide_job = 공고 id, 그 밖 = 회원 id */
   targetId: string;
   targetName: string;
+  /** 계정 조치 전 상태(다시 활성 확인 문구가 정지/퇴출에 따라 다르다) */
+  fromStatus?: AccountStatusValue | null;
   /** 신고에서 연 조치면 그 신고(조치 뒤 신고를 닫을지 고른다) */
   report?: { id: string; targetType: ReportTargetType; targetId: string; openCount: number } | null;
 }
@@ -39,6 +44,7 @@ type CloseScope = "this" | "all" | "none";
 
 const DONE_TEXT: Record<AdminAction, string> = {
   hide_job: "공고를 숨겼어요",
+  unhide_job: "공고를 다시 보이게 했어요",
   suspend: "계정을 정지했어요",
   ban: "계정을 퇴출했어요",
   reactivate: "계정을 다시 활성으로 바꿨어요",
@@ -80,11 +86,13 @@ export function ModerationActionDialog({
     };
   }, []);
 
-  const isReactivate = request.action === "reactivate";
+  // 다시 활성 · 다시 보이기는 위반 사유 없이 메모만(관리자 기록)
+  const isReactivate = request.action === "reactivate" || request.action === "unhide_job";
   const ct = confirmText(request.action, {
     targetName: request.targetName,
     reason: isReactivate ? null : reason,
     note,
+    fromStatus: request.fromStatus ?? null,
   });
 
   const next = () => {
@@ -109,10 +117,13 @@ export function ModerationActionDialog({
     if (running.current) return;
     running.current = true;
     setBusy(true);
+    setFormError(null);
     const r = request;
     const rsn = reason;
-    let res: { error?: string };
-    if (r.action === "hide_job") {
+    let res: { error?: string; status?: string };
+    if (r.action === "unhide_job") {
+      res = await adminUnhideJob(r.targetId, note);
+    } else if (r.action === "hide_job") {
       res = rsn ? await adminHideJob(r.targetId, rsn, note) : { error: "사유를 골라 주세요" };
     } else if (r.action === "reactivate") {
       res = await adminSetAccountStatus(r.targetId, "active", null, note);
@@ -123,9 +134,10 @@ export function ModerationActionDialog({
     if (res.error) {
       toast.error(res.error);
       if (!mounted.current) return;
-      if (INPUT_ERROR.test(res.error)) {
+      // 입력 오류는 입력 단계로, 네트워크 오류는 이 단계 그대로 — 둘 다 창을 열어 둔 채 입력을 지킨다
+      if (INPUT_ERROR.test(res.error) || isNetworkErrorText(res.error)) {
         setFormError(res.error);
-        setStep("form");
+        if (INPUT_ERROR.test(res.error)) setStep("form");
         running.current = false;
         setBusy(false);
         return;
@@ -136,7 +148,7 @@ export function ModerationActionDialog({
       return;
     }
 
-    toast.success(DONE_TEXT[r.action]);
+    toast.success(r.action === "unhide_job" ? unhideDoneText(res.status) : DONE_TEXT[r.action]);
 
     // 신고에서 연 조치면 고른 대로 신고를 닫는다(조용히 열어 두지 않는다)
     if (report && scope !== "none") {
@@ -269,8 +281,21 @@ export function ModerationActionDialog({
               ))}
               {scopeLine && <li className="rounded-xl bg-surface px-3 py-2">{scopeLine}</li>}
             </ul>
+            {formError && (
+              <p role="alert" className="rounded-xl bg-warn-bg p-3 text-sm font-semibold text-warn">
+                {formError}
+              </p>
+            )}
             <DialogFooter className="gap-2">
-              <Button variant="outline" className="h-11 border-line" disabled={busy} onClick={() => setStep("form")}>
+              <Button
+                variant="outline"
+                className="h-11 border-line"
+                disabled={busy}
+                onClick={() => {
+                  setFormError(null);
+                  setStep("form");
+                }}
+              >
                 돌아가기
               </Button>
               <Button

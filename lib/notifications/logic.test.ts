@@ -69,6 +69,8 @@ test("notificationFromRow: 행을 앱 타입으로, 알 수 없는 종류는 nul
 
 test("isNotificationKind · countUnread", () => {
   assert.equal(isNotificationKind("doc_expiring"), true);
+  assert.equal(isNotificationKind("job_unhidden"), true);
+  assert.equal(isNotificationKind("account_reactivated"), true);
   assert.equal(isNotificationKind("chat"), false);
   assert.equal(countUnread([{ readAt: null }, { readAt: "2026-10-23T00:00:00Z" }, { readAt: null }]), 2);
 });

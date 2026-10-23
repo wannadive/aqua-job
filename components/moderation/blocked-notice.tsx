@@ -31,7 +31,7 @@ export function BlockedNotice({
       setReason(null);
       return;
     }
-    fetchMyBlockedReason(kind)
+    fetchMyBlockedReason(userId, kind)
       .then((r) => !cancelled && setReason(r))
       .catch(() => !cancelled && setReason(null));
     return () => {

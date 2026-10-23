@@ -54,7 +54,10 @@ export type NotificationKindValue =
   | "doc_expiring"
   | "job_hidden"
   | "account_suspended"
-  | "account_banned";
+  | "account_banned"
+  // 012
+  | "job_unhidden"
+  | "account_reactivated";
 
 // 011 신고·관리자 조치 — DB job_violation_label()과 같은 목록
 /** 위반 사유: 가짜 서류 · 허위 공고 · 연락처 수집 목적 · 불법 행위 · 기타(설명 필수) */
@@ -79,6 +82,8 @@ export interface AdminReportRow {
   /** 공고 대상일 때 job_effective_status */
   target_job_status: JobEffectiveStatus | null;
   target_account_status: AccountStatus | null;
+  /** 012: 대상 계정이 관리자인지(조치 버튼 숨김용 — 서버가 최종 관문) */
+  target_is_admin: boolean;
   /** 같은 대상의 열린 신고 수 */
   target_open_reports: number;
   reason: ViolationReason;
@@ -519,7 +524,7 @@ export interface Database {
           admin_id: string | null;
           target_user_id: string | null;
           /** document_verified · document_rejected · job_hidden · account_suspended · account_banned
-           *  · account_reactivated · report_resolved · report_dismissed */
+           *  · account_reactivated · report_resolved · report_dismissed · job_unhidden(012, reason 없음) */
           action: string;
           /** 서류: '종류 · 반려 사유', 조치(011): 위반 사유 코드(ViolationReason) */
           reason: string | null;

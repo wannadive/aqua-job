@@ -40,9 +40,14 @@ export async function submitReport(target: Pick<ReportTarget, "type" | "id">, re
  * 차단 화면: 내 최근 계정 정지·퇴출 알림 본문에서 사유(없으면 null). aqua_notifications는 본인 행만 보인다(RLS).
  * 오류는 던진다(화면은 중립 문구로 대신한다).
  */
-export async function fetchMyBlockedReason(kind: "account_suspended" | "account_banned"): Promise<string | null> {
+export async function fetchMyBlockedReason(
+  userId: string,
+  kind: "account_suspended" | "account_banned",
+): Promise<string | null> {
+  // RLS가 본인 행만 보여 주지만, 내 id로 한 번 더 좁힌다(두 번째 안전장치)
   const { data, error } = await (createClient().from("aqua_notifications") as any)
     .select("body, created_at")
+    .eq("user_id", userId)
     .eq("kind", kind)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -64,18 +69,18 @@ export async function listAdminReports(status: ReportStatus | null, limit = 200)
   return ((data ?? []) as any[]).map(adminReportFromRow).filter((r): r is AdminReport => r !== null);
 }
 
-/** 신고 대상 계정들의 역할(관리자 계정 조치 버튼을 숨기는 데만 쓴다 — 서버도 막는다). 관리자만 읽힌다. */
-export async function fetchAccountRoles(ids: string[]): Promise<Map<string, string[]>> {
-  const out = new Map<string, string[]>();
-  const uniq = Array.from(new Set(ids.filter(Boolean)));
-  if (uniq.length === 0) return out;
-  const { data, error } = await (createClient().from("profiles") as any).select("id, role, roles").in("id", uniq);
-  if (error) throw new Error("회원 정보를 불러오지 못했어요");
-  for (const p of (data ?? []) as any[]) {
-    const roles = Array.isArray(p.roles) && p.roles.length > 0 ? (p.roles as string[]) : p.role ? [String(p.role)] : [];
-    out.set(p.id, roles);
+/**
+ * 숨긴 공고 다시 보이기(012 admin_unhide_job). 서버가 마감일·인원으로 모집 중/마감을 정해 돌려준다.
+ * 숨길 때 미선택된 지원·마감된 제안은 되돌리지 않는다. 설명은 관리자 기록에만.
+ */
+export async function adminUnhideJob(jobId: string, note: string | null): Promise<{ error?: string; status?: string }> {
+  try {
+    const { data, error } = await (createClient() as any).rpc("admin_unhide_job", { p_job: jobId, p_note: cleanNote(note) });
+    if (error) return { error: adminErrorMessage(error) };
+    return { status: typeof data === "string" ? data : undefined };
+  } catch (e) {
+    return { error: adminErrorMessage({ message: e instanceof Error ? e.message : "network" }) };
   }
-  return out;
 }
 
 export async function adminHideJob(jobId: string, reason: ViolationReason, note: string | null): Promise<Res> {
