@@ -27,7 +27,7 @@ components/
   ui/           shadcn
 lib/
   app-shell/    셸: auth-provider.tsx(useAuth), account/, intro/
-  jobs/ verification/ talent-profile/ center-listing/ avatar/   도메인 모듈 (types·logic·api·mappers)
+  jobs/ verification/ talent-profile/ center-listing/ avatar/ notifications/ offers/ moderation/   도메인 모듈 (types·logic·api·mappers)
   supabase/     client.ts, admin.ts, database.types.ts, keep-login.ts (공용, 위치 유지)
   brand.ts      브랜드 값(이름·태그라인)은 여기서만 읽기
   image.ts      이미지 압축 (compressImage)
@@ -51,6 +51,11 @@ docs/           설계·계획·기능 명세, FINFRIENDS_INTEGRATION.md
 - 접근 제어는 RLS로 한다. 화면에서 숨기는 것만으로 끝내지 않는다.
 - 직접 REST 경로(테이블 select 정책)도 is_active·구독 확인: RPC에만 관문을 두지 말고, 남의 데이터를 읽는 정책 분기에는 `(select public.is_active())`와 필요한 구독(`job_center_entitled()` 등)을 함께 건다(007).
 - 남의 센터 정보(`center_profiles`)와 회원 id(공고 `owner_id`, 센터 `user_id`)는 SECURITY DEFINER RPC로만 내보내고, 회원 id는 주인·관리자에게만 준다(007).
+- 강사 정보(이력서·강사 서류 사실·강사 이름)는 `job_can_view_talent()` 하나로 판정(본인·관리자·구독 센터 × 공개 이력서/내 공고 지원자). 활성 센터 역할 대상이라는 이유로는 profiles 행(이름)만 열린다 — 정지·퇴출 센터 이름은 본인·관리자만(008). 새로 강사 정보를 여는 조건은 이 함수 안에만 더한다(009: 내 공고의 제안을 수락한 강사).
+- 연락처가 열리는 RPC는 `get_applicant_contact`(선택)와 `get_offer_contact`(제안 수락) 둘뿐(009). 모집 인원은 선택한 지원 + 수락한 제안(`job_filled_count`) — 인원을 세는 곳은 모두 이 함수를 쓴다.
+- 알림(010): `aqua_notifications`는 본인만 조회, 직접 쓰기 없음 — 알림은 DB 트리거가 내부 함수 `aqua_notify`(회원·service role 실행 불가)로만 만들고, 읽음은 `aqua_mark_read`/`aqua_mark_all_read` RPC. 문구는 중립, 센터명·공고 제목·서류 종류·반려 사유까지만(연락처·서류 내용 금지), link는 앱 안 주소만(DB 제약). 알림 종류는 DB `aqua_notifications_kind_check`와 `lib/notifications/config.ts` `NOTIFICATION_KINDS` 두 곳, 서류 이름은 DB `aqua_doc_label()`과 `DOC_TYPES` — 함께 고친다(`lib/notifications/config.test.ts`가 다르면 실패). 새 사건 알림은 트리거에서 `aqua_notify`를 부른다(화면·API에서 알림을 직접 넣지 않는다). 관리자 조치 사유는 상태를 바꾸기 전에 `set_config('aqua.action_reason', 사유, true)`.
+- 웹 푸시(010): 구독은 `aqua_save_push_subscription`(활성 회원, 알려진 푸시 서비스 https 주소만, 한 사람 10대), 대기열 `aqua_push_outbox`는 service role만(`aqua_claim_push_outbox`), 발송 설정 `aqua_push_config`(flush_url·flush_secret)는 트리거 함수만 읽는다. `/api/push/flush`는 헤더 `x-aqua-push-secret` = `PUSH_FLUSH_SECRET`(상수 시간 비교)일 때만 보낸다. 푸시 내용은 제목·본문·링크만 — 잠금 화면용이라 서류·계정 조치·공고 숨김·마감 알림은 일반 문구(`aqua_notify`가 정함, 종류·사유는 앱 안 알림에만), 구독 주소·키·비밀값은 로그에 남기지 않는다. 기기 주인이 바뀌면 이전 계정의 안 보낸 푸시는 지운다. 재지원 반복 시 센터 새 지원자 알림은 같은 지원에 24시간 한 번. `public/sw.js`는 같은 출처 앱 안 주소만 연다.
+- 신고·관리자 조치(011): 신고는 `submit_report`만(활성 회원, 볼 수 있는 대상만 — 안 보이면 '찾을 수 없어요'로 존재를 숨김, 내 것 제외, 같은 대상 24시간 1회·24시간 20건). `job_reports` 직접 조회는 신고한 본인·관리자, 처리 메모(`resolution`)·`resolved_by`는 칸 권한 없음(관리자는 `admin_list_reports`). 위반 사유는 정해진 목록(DB `job_violation_label()` · 표 제약 · `ViolationReason` 타입 — 함께 고친다), 기타는 설명 필수이고 그 설명이 당사자 알림에 붙는다. 관리자 조치는 `admin_hide_job`·`admin_set_account_status`·`admin_resolve_report` RPC만(계정 상태를 화면에서 profiles에 직접 쓰지 않는다), 자기 자신·다른 관리자 계정은 못 바꾼다, 모두 `admin_actions`(reason=사유 코드, note) 기록. 퇴출 = 모집 중 공고 숨김 + 열린 지원·제안 정리, 당사자에게는 계정 알림 하나만(`aqua.quiet_user`). 정지는 데이터 그대로.
 - 공고 지역 목록은 DB `job_region_options()`와 `lib/talent-profile/config.ts`의 `REGION_OPTIONS` 두 곳 — 함께 고친다(`lib/jobs/regions.test.ts`가 다르면 실패). 공고 입력 한도는 `lib/jobs/config.ts`의 `JOB_LIMITS`와 DB `job_post_from_payload`가 같아야 한다.
 
 ### 모듈
@@ -97,5 +102,10 @@ pnpm build
 NEXT_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 SUPABASE_SERVICE_ROLE_KEY=<service-role-key>   # 서버 전용, NEXT_PUBLIC_ 금지
+# 웹 푸시(010)
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=<vapid-public-key>  # 공개(구독용)
+VAPID_PRIVATE_KEY=<vapid-private-key>            # 서버 전용
+VAPID_SUBJECT=mailto:<운영자 이메일>             # 서버 전용
+PUSH_FLUSH_SECRET=<랜덤 비밀값>                  # 서버 전용, DB aqua_push_config(flush_secret)와 같은 값
 ```
-(`.env.local.example` 참고. 세 값 모두 Vercel의 Production·Preview 둘 다에 넣는다. `.env.local.example` 외의 `.env*`는 커밋 금지)
+(`.env.local.example` 참고. VAPID 키는 `npx web-push generate-vapid-keys`로 한 번 만들고 바꾸지 않는다. 모든 값을 Vercel의 Production·Preview 둘 다에 넣는다. `.env.local.example` 외의 `.env*`는 커밋 금지)

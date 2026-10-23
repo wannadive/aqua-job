@@ -44,6 +44,10 @@ insert into public.talent_profiles (user_id, is_public) values
   ('e2000000-0000-4000-8000-0000000000a1', true),
   ('e2000000-0000-4000-8000-0000000000a2', false);
 
+-- 무료 기간에서 시작한다(운영 값이 무엇이든 이 트랜잭션 안에서만). 센터가 강사 이름을 보는 조건은
+-- 센터 구독(job_can_view_talent, 008)에 걸리므로 운영 paid_mode 값과 상관없게 한다.
+update public.aqua_settings set value = 'false'::jsonb where key = 'paid_mode';
+
 -- ---------------------------------------------------------------------
 -- instructor_cannot_list_other_instructors: 강사는 다른 강사의 profiles 행(이름)을 볼 수 없다
 -- ---------------------------------------------------------------------

@@ -1,4 +1,4 @@
-// 손으로 쓴 DB 타입 (supabase/migrations/ 001 기반 스키마 + 003 여러 역할 + 005 공고 + 006 합류 대비 이름·centers 기준).
+// 손으로 쓴 DB 타입 (supabase/migrations/ 001 기반 스키마 + 003 여러 역할 + 005 공고 + 006 합류 대비 이름·centers 기준 + 009 제안 + 010 알림·푸시 + 011 신고·관리자 조치).
 // 스키마를 바꾸면 여기도 같이 고친다.
 
 export type Json =
@@ -38,6 +38,74 @@ export type JobClosedReason = "manual" | "full" | "expired";
 export type JobEffectiveStatus = "open" | "full" | "expired" | "closed" | "hidden";
 export type ApplicationStatusValue = "applied" | "selected" | "withdrawn" | "not_selected";
 export type DestinationKind = "domestic" | "overseas";
+// 009 제안
+export type OfferStatusValue = "offered" | "accepted" | "declined" | "withdrawn" | "expired";
+// 010 알림 — lib/notifications/config.ts NOTIFICATION_KINDS와 같다
+export type NotificationKindValue =
+  | "application_new"
+  | "application_selected"
+  | "application_closed"
+  | "offer_new"
+  | "offer_accepted"
+  | "offer_declined"
+  | "offer_expired"
+  | "doc_verified"
+  | "doc_rejected"
+  | "doc_expiring"
+  | "job_hidden"
+  | "account_suspended"
+  | "account_banned"
+  // 012
+  | "job_unhidden"
+  | "account_reactivated";
+
+// 011 신고·관리자 조치 — DB job_violation_label()과 같은 목록
+/** 위반 사유: 가짜 서류 · 허위 공고 · 연락처 수집 목적 · 불법 행위 · 기타(설명 필수) */
+export type ViolationReason = "fake_document" | "false_posting" | "contact_harvesting" | "illegal" | "other";
+/** 신고 대상: job=job_posts.id · profile=profiles.id · center=centers.id */
+export type ReportTargetType = "job" | "profile" | "center";
+export type ReportStatus = "open" | "resolved" | "dismissed";
+
+/** 011 admin_list_reports 한 행(관리자 전용). 대상 요약만 — 연락처·서류 칸 없음 */
+export interface AdminReportRow {
+  id: string;
+  reporter_id: string;
+  reporter_name: string | null;
+  target_type: ReportTargetType;
+  target_id: string;
+  /** 공고 주인 · 회원 · 센터 주인 회원 id(대상이 지워졌으면 null) */
+  target_user_id: string | null;
+  /** 공고 제목 · 회원 이름 · 센터명 */
+  target_title: string | null;
+  /** 공고·센터 대상일 때 센터명 */
+  target_center_name: string | null;
+  /** 공고 대상일 때 job_effective_status */
+  target_job_status: JobEffectiveStatus | null;
+  target_account_status: AccountStatus | null;
+  /** 012: 대상 계정이 관리자인지(조치 버튼 숨김용 — 서버가 최종 관문) */
+  target_is_admin: boolean;
+  /** 같은 대상의 열린 신고 수 */
+  target_open_reports: number;
+  reason: ViolationReason;
+  note: string | null;
+  status: ReportStatus;
+  created_at: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  resolution: string | null;
+}
+
+/** 010 aqua_claim_push_outbox 한 행(service role 전용) */
+export interface ClaimedPushRow {
+  id: number;
+  subscription_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  title: string;
+  body: string;
+  link: string;
+}
 
 /** list_public_jobs · get_job_summary 한 행(상세 설명·센터 상세 없음). date는 YYYY-MM-DD, time은 HH:MM:SS */
 export interface JobSummaryRow {
@@ -102,6 +170,36 @@ export interface PublicFactRow {
   verified_at: string | null;
   org: string | null;
   grade: string | null;
+}
+
+/** 009 browse_instructors 한 행: 이력서 공개 칸 + 유효한 서류 사실만(연락처·비공개 칸 없음). intro는 200자까지 */
+export interface BrowseInstructorRow {
+  user_id: string;
+  display_name: string;
+  photo_path: string | null;
+  gender: string | null;
+  age_band: string | null;
+  regions: string[];
+  scopes: string[];
+  certifications: { org: string | null; level: string | null }[];
+  instructor_level: string | null;
+  instructor_years: number | null;
+  teaching_style_tags: string[];
+  intro: string | null;
+  available_days: string[];
+  desired_rate: string | null;
+  records: Json;
+  facts: { doc_type: DocTypeValue; valid_until: string | null; org: string | null; grade: string | null }[];
+}
+
+/** 009 browse_instructors 필터(모두 선택) */
+export interface BrowseInstructorFilters {
+  regions?: string[];
+  org?: string;
+  level?: string;
+  scope?: string;
+  available_days?: string[];
+  verified_only?: boolean;
 }
 
 /** get_center_public_profile: detail_visible=false면 상세 칸은 null */
@@ -419,31 +517,45 @@ export interface Database {
         };
         Relationships: [];
       };
+      // 관리자만 조회. 기록은 관리자 RPC(review_document · admin_*)만 한다
       admin_actions: {
         Row: {
           id: string;
           admin_id: string | null;
           target_user_id: string | null;
+          /** document_verified · document_rejected · job_hidden · account_suspended · account_banned
+           *  · account_reactivated · report_resolved · report_dismissed · job_unhidden(012, reason 없음) */
           action: string;
+          /** 서류: '종류 · 반려 사유', 조치(011): 위반 사유 코드(ViolationReason) */
           reason: string | null;
+          /** 011: 관리자 설명·처리 메모(500자) */
+          note: string | null;
+          /** 011: 공고 숨김·공고 신고 처리의 대상 공고 */
+          target_job_id: string | null;
           created_at: string;
         };
-        Insert: {
-          id?: string;
-          admin_id?: string | null;
-          target_user_id?: string | null;
-          action: string;
-          reason?: string | null;
-          created_at?: string;
+        Insert: { [_ in never]: never };
+        Update: { [_ in never]: never };
+        Relationships: [];
+      };
+      // 011: 신고. 직접 쓰기 불가(submit_report RPC). 직접 조회는 신고한 본인·관리자, 아래 칸만
+      // (처리 메모 resolution·처리한 관리자 resolved_by는 칸 권한 없음 — 관리자는 admin_list_reports)
+      // ⚠️ 칸 권한 때문에 select('*')는 permission denied — 칸을 직접 적는다
+      //    (예: select('id,target_type,target_id,reason,note,status,created_at,resolved_at')).
+      job_reports: {
+        Row: {
+          id: string;
+          reporter_id: string;
+          target_type: ReportTargetType;
+          target_id: string;
+          reason: ViolationReason;
+          note: string | null;
+          status: ReportStatus;
+          created_at: string;
+          resolved_at: string | null;
         };
-        Update: {
-          id?: string;
-          admin_id?: string | null;
-          target_user_id?: string | null;
-          action?: string;
-          reason?: string | null;
-          created_at?: string;
-        };
+        Insert: { [_ in never]: never };
+        Update: { [_ in never]: never };
         Relationships: [];
       };
       aqua_settings: {
@@ -519,6 +631,56 @@ export interface Database {
         Update: { [_ in never]: never };
         Relationships: [];
       };
+      job_offers: {
+        Row: {
+          id: string;
+          job_id: string;
+          center_id: string;
+          instructor_id: string;
+          message: string | null;
+          status: OfferStatusValue;
+          created_at: string;
+          /** 상태가 offered에서 바뀐 시각(수락·거절·철회·마감) */
+          responded_at: string | null;
+        };
+        // 직접 쓰기 불가 — send_offer · withdraw_offer · respond_offer RPC로만
+        Insert: { [_ in never]: never };
+        Update: { [_ in never]: never };
+        Relationships: [];
+      };
+      aqua_notifications: {
+        Row: {
+          id: string;
+          user_id: string;
+          kind: NotificationKindValue;
+          title: string;
+          body: string;
+          /** 앱 안 주소만('/'로 시작) */
+          link: string | null;
+          created_at: string;
+          read_at: string | null;
+        };
+        // 직접 쓰기 불가 — 트리거(aqua_notify)가 만들고, 읽음은 aqua_mark_read · aqua_mark_all_read RPC로만
+        Insert: { [_ in never]: never };
+        Update: { [_ in never]: never };
+        Relationships: [];
+      };
+      aqua_push_subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          created_at: string;
+          last_used_at: string;
+        };
+        // 저장은 aqua_save_push_subscription RPC로만. 본인은 삭제 가능(RLS). 발송 API(service role)는 last_used_at 갱신·끝난 구독 삭제
+        Insert: { [_ in never]: never };
+        Update: { last_used_at?: string };
+        Relationships: [];
+      };
+      // aqua_push_outbox · aqua_push_config · aqua_doc_expiry_notices는 회원 접근 불가 — 타입에 넣지 않는다
       // job_views는 직접 접근 불가(record_job_view RPC로만) — 타입에 넣지 않는다
     };
     Views: { [_ in never]: never };
@@ -563,6 +725,8 @@ export interface Database {
       job_region_options: { Args: Record<string, never>; Returns: string[] };
       /** 007: 호출자 센터가 활성 + aquajob 구독인가 */
       job_center_entitled: { Args: Record<string, never>; Returns: boolean };
+      /** 008: 강사 정보(이력서·강사 서류 사실·강사 이름)를 볼 수 있는가 — 본인·관리자·구독 센터 × 공개/지원자 */
+      job_can_view_talent: { Args: { p_user: string }; Returns: boolean };
       /** 006 구독 자리: 무료 기간엔 true, 유료 전환 후엔 결제 연동 전까지 관리자만 */
       user_has_product: { Args: { p_user: string; p_product: ProductKey }; Returns: boolean };
       center_has_product: { Args: { p_center_id: string; p_product: ProductKey }; Returns: boolean };
@@ -577,6 +741,55 @@ export interface Database {
       apply_to_job: { Args: { p_job: string; p_message?: string | null }; Returns: string };
       withdraw_application: { Args: { p_app: string }; Returns: undefined };
       select_applicant: { Args: { p_app: string }; Returns: undefined };
+      /** 009: 모집 인원 수 = 선택한 지원 + 수락한 제안 */
+      job_filled_count: { Args: { p_job: string }; Returns: number };
+      /** 009: 강사 둘러보기 — 활성 + 구독 센터만 */
+      browse_instructors: {
+        Args: { p_filters?: BrowseInstructorFilters; p_limit?: number; p_offset?: number };
+        Returns: BrowseInstructorRow[];
+      };
+      send_offer: { Args: { p_job: string; p_instructor: string; p_message?: string | null }; Returns: string };
+      withdraw_offer: { Args: { p_offer: string }; Returns: undefined };
+      respond_offer: { Args: { p_offer: string; p_accept: boolean }; Returns: undefined };
+      /** 009: 수락한 제안의 공고 주인에게만 1행 */
+      get_offer_contact: {
+        Args: { p_offer: string };
+        Returns: { phone: string | null; email: string | null }[];
+      };
+      /** 010: 내 알림 읽음 표시(최대 500개) — 바뀐 개수 */
+      aqua_mark_read: { Args: { p_ids: string[] }; Returns: number };
+      aqua_mark_all_read: { Args: Record<string, never>; Returns: number };
+      aqua_unread_count: { Args: Record<string, never>; Returns: number };
+      /** 010: 활성 회원, 알려진 푸시 서비스 https 주소만, 한 사람 최대 10대 */
+      aqua_save_push_subscription: {
+        Args: { p_endpoint: string; p_p256dh: string; p_auth: string };
+        Returns: undefined;
+      };
+      aqua_is_push_endpoint: { Args: { p_endpoint: string }; Returns: boolean };
+      /** 010: service role 전용 — 대기분을 가져가며 보냄 표시 */
+      aqua_claim_push_outbox: { Args: { p_limit?: number }; Returns: ClaimedPushRow[] };
+      /** 011: 신고(활성 회원, 볼 수 있는 대상만, 같은 대상 24시간 1회 · 24시간 20건). 새 신고 id */
+      submit_report: {
+        Args: { p_target_type: ReportTargetType; p_target_id: string; p_reason: ViolationReason; p_note?: string | null };
+        Returns: string;
+      };
+      /** 011 관리자: 공고 숨김(남은 지원 → 미선택, 보낸 제안 → 마감) */
+      admin_hide_job: { Args: { p_job: string; p_reason: ViolationReason; p_note?: string | null }; Returns: undefined };
+      /** 011 관리자: 정지·퇴출(위반 사유 필수) · 다시 활성(사유 없이). 자기 자신·다른 관리자 불가 */
+      admin_set_account_status: {
+        Args: { p_user: string; p_status: AccountStatus; p_reason?: ViolationReason | null; p_note?: string | null };
+        Returns: undefined;
+      };
+      /** 011 관리자: 열린 신고만 resolved | dismissed */
+      admin_resolve_report: {
+        Args: { p_report: string; p_status: "resolved" | "dismissed"; p_resolution?: string | null };
+        Returns: undefined;
+      };
+      /** 011 관리자: 신고 목록(최근 것부터, p_status null이면 전부, p_limit 최대 200) */
+      admin_list_reports: {
+        Args: { p_status?: ReportStatus | null; p_limit?: number; p_offset?: number };
+        Returns: AdminReportRow[];
+      };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

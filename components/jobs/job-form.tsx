@@ -82,9 +82,9 @@ export function JobForm({
   /** 있으면 수정 */
   editJobId?: string | null;
   onClose: () => void;
-  onSaved: () => Promise<void> | void;
+  onSaved: () => Promise<unknown> | void;
   onSubmitDocs: () => void;
-  /** 수정할 때 이미 선택된 인원(모집 인원은 이보다 줄일 수 없다) */
+  /** 수정할 때 이미 채운 인원 = 선택 + 수락한 제안(모집 인원은 이보다 줄일 수 없다) */
   selectedCount?: number;
 }) {
   const minHeadcount = editJobId ? selectedCount : 0;
@@ -458,7 +458,7 @@ export function JobForm({
         )}
       </Field>
 
-      <Field label="모집 인원" hint={minHeadcount > 0 ? `(${minHeadcount}~20명 · 선택 인원과 같아지면 공고가 마감돼요)` : "(1~20명)"}>
+      <Field label="모집 인원" hint={minHeadcount > 0 ? `(${minHeadcount}~20명 · 선택·제안 수락 인원과 같아지면 공고가 마감돼요)` : "(1~20명)"}>
         <Input inputMode="numeric" value={d.headcount} onChange={(e) => set("headcount", e.target.value.replace(/[^0-9]/g, "").slice(0, 2))} />
       </Field>
 

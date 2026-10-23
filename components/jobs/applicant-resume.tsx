@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { ChevronLeft } from "lucide-react";
+import { ReportButton } from "@/components/moderation/report-button";
 import { avatarUrl } from "@/lib/avatar/api";
 import { getPublicFacts } from "@/lib/jobs/api";
 import { fetchTalentProfile } from "@/lib/talent-profile/api";
@@ -43,7 +44,21 @@ function Section({ title, self = false, children }: { title: string; self?: bool
  * 센터가 보는 지원자 이력서. 이력서 항목 + 서류는 유효한 사실(publicFacts)만.
  * 연락처는 여기서 다루지 않는다(연락처는 선택 뒤 연락처 카드에서만).
  */
-export function ApplicantResume({ instructorId, name, onBack }: { instructorId: string; name: string; onBack: () => void }) {
+export function ApplicantResume({
+  instructorId,
+  name,
+  onBack,
+  actions,
+  reporterId = null,
+}: {
+  instructorId: string;
+  name: string;
+  onBack: () => void;
+  /** 이력서를 읽었을 때만 맨 아래에 보이는 버튼 영역(예: 강사 찾기의 [공고 골라서 제안하기]) */
+  actions?: ReactNode;
+  /** 신고할 수 있는 사람(로그인한 활성 회원)의 id. null이면 [신고하기]를 그리지 않는다. 본인 이력서에는 없다 */
+  reporterId?: string | null;
+}) {
   const [profile, setProfile] = useState<InstructorProfile | null | undefined>(undefined);
   const [facts, setFacts] = useState<PublicFact[]>([]);
   const [error, setError] = useState(false);
@@ -96,7 +111,9 @@ export function ApplicantResume({ instructorId, name, onBack }: { instructorId: 
     return (
       <div className="space-y-4">
         {back}
-        <div className="rounded-card bg-white p-5 text-sm text-muted shadow-sm">볼 수 있는 이력서가 없어요</div>
+        <div className="rounded-card bg-white p-5 text-sm text-muted shadow-sm">
+          볼 수 있는 이력서가 없어요. 강사가 이력서를 비공개로 돌렸거나 이용이 멈췄을 수 있어요
+        </div>
       </div>
     );
 
@@ -214,6 +231,15 @@ export function ApplicantResume({ instructorId, name, onBack }: { instructorId: 
           <Row label="희망 단가" value={profile.desiredRate || "협의"} />
         </dl>
       </Section>
+
+      {actions}
+
+      {/* 신고: 이력서를 읽었을 때만, 본인 아님. 서버(submit_report)가 볼 수 있는 대상인지 다시 확인한다 */}
+      {reporterId && reporterId !== instructorId && (
+        <div className="flex justify-center">
+          <ReportButton target={{ type: "profile", id: instructorId, label: name }} />
+        </div>
+      )}
     </div>
   );
 }

@@ -1,10 +1,15 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { BlockedNotice } from "@/components/moderation/blocked-notice";
 import { useAuth } from "@/lib/app-shell/auth-provider";
 
 export function BlockedScreen() {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
+  // 로그아웃은 useAuth().logout — 이 기기 푸시 구독을 먼저 정리한다(logoutWithPushCleanup)
+  if (user && (user.accountStatus === "suspended" || user.accountStatus === "banned")) {
+    return <BlockedNotice key={user.id} status={user.accountStatus} userId={user.id} onLogout={logout} />;
+  }
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-10">
       <div className="rounded-card bg-white p-6 shadow-sm">

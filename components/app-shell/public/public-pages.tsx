@@ -13,7 +13,10 @@ import type { JobSummary, JobViewer } from "@/lib/jobs/types";
 
 function useViewer(): { viewer: JobViewer; loading: boolean } {
   const { user, isLoading } = useAuth();
-  return { viewer: { userId: user?.id ?? null, roles: user?.roles ?? [] }, loading: isLoading };
+  return {
+    viewer: { userId: user?.id ?? null, roles: user?.roles ?? [], active: user?.accountStatus === "active" },
+    loading: isLoading,
+  };
 }
 
 const ViewerContext = createContext<JobViewer>({ userId: null, roles: [] });
@@ -106,6 +109,7 @@ export function PublicCenterPage({ id }: { id: string }) {
     <CenterPublicProfileView
       centerId={id}
       loggedIn={!!viewer.userId}
+      reporterId={viewer.active ? viewer.userId : null}
       onBack={() => router.push("/jobs")}
       onOpenJob={(jid) => router.push(`/jobs/${jid}`)}
       onSignup={() => router.push(SIGNUP)}
@@ -153,6 +157,7 @@ export function JobsBrowser({
       <CenterPublicProfileView
         centerId={view.id}
         loggedIn
+        reporterId={viewer.active ? viewer.userId : null}
         onBack={pop}
         onOpenJob={(id) => push({ kind: "job", id })}
         onSignup={noop}

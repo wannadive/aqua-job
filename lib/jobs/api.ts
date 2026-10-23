@@ -235,7 +235,7 @@ export async function listMyApplications(): Promise<MyApplication[]> {
   return apps.map((a) => ({ ...a, job: byId.get(a.jobId) ?? null }));
 }
 
-/** 내 공고의 지원자(최신순). 지원 취소 행은 RLS가 주인에게 주지 않는다(007). 이름은 profiles 조인(센터가 볼 수 있는 경우만). */
+/** 내 공고의 지원자(최신순). 지원 취소 행은 RLS가 주인에게 주지 않는다(007), 센터 구독이 없으면 빈 목록(008). 이름은 profiles 조인(센터가 볼 수 있는 경우만). */
 export async function listApplicants(jobId: string): Promise<JobApplication[]> {
   const { data, error } = await (createClient() as any)
     .from("job_applications")
@@ -310,13 +310,16 @@ export async function selectApplicant(appId: string): Promise<{ error?: string }
  */
 export async function listAllJobsForAdmin(): Promise<AdminJobRow[]> {
   const sb = createClient() as any;
-  const [posts, apps, centers] = await Promise.all([
+  const [posts, apps, centers, offers] = await Promise.all([
     sb.from("job_posts").select("*").order("created_at", { ascending: false }),
     sb.from("job_applications").select("job_id, status"),
     sb.from("centers").select("id, name"),
+    // 인원 = 선택 + 수락한 제안(009). 제안도 상태만 읽는다(한마디·이름 없음).
+    sb.from("job_offers").select("job_id, status"),
   ]);
   if (posts.error) fail(posts.error);
   if (apps.error) fail(apps.error);
   if (centers.error) fail(centers.error);
-  return buildAdminJobRows(posts.data ?? [], apps.data ?? [], centers.data ?? [], todayKst());
+  if (offers.error) fail(offers.error);
+  return buildAdminJobRows(posts.data ?? [], apps.data ?? [], centers.data ?? [], todayKst(), offers.data ?? []);
 }

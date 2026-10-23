@@ -27,6 +27,8 @@ AQUA 센터 계정은 합칠 때 해당 센터의 owner 멤버가 된다.
 - `documents`: WD `center_documents`와 혼동 → 변경 권장 (`verification_documents`)
 - `requirement_rules` → `verification_requirements`, `admin_actions`는 일반적인 이름(합칠 때 병합), `center_profiles`는 합칠 때 정리
 
+- 알림·푸시(010): WD에 `notifications`(message·type·category·read)·`push_subscriptions`·`push_outbox`·`push_preferences`·`push_config`가 있어 AQUA는 `aqua_notifications`·`aqua_push_subscriptions`·`aqua_push_outbox`·`aqua_push_config`·`aqua_doc_expiry_notices`로 따로 둔다(아래 4절 "알림 합치기")
+
 **함수 / 트리거**
 - `is_admin()`: AQUA는 인자 없음, WD는 `is_admin(p_uid uuid default auth.uid())` → 합칠 때 통일
 - `handle_new_user`, `guard_profile_privileged_columns`, 트리거 `profiles_guard_privileged`: 수작업 병합
@@ -68,12 +70,23 @@ lib/verification/ + components/verification/       서류 확인 (document-*, fa
 lib/talent-profile/ + components/talent-profile/   강사 이력서 (resume-*)
 lib/center-listing/ + components/center-listing/   센터 소개 (center-profile-form)
 lib/avatar/api.ts                                  아바타 업로드/URL
+lib/notifications/ + components/notifications/     앱 안 알림(종·목록·모두 읽음)·푸시 켜기/끄기·로그아웃 때 구독 정리,
+                                                   링크 해석·역할 화면 연결(link.ts), 발송 순수 로직(flush.ts).
+                                                   합칠 때 WD notifications·push_*와 병합(4절) — 셸은 NotificationsProvider·NotificationBar·
+                                                   NotificationPanel만 끼우고, 이동은 셸이 onOpenLink로 받는다
+lib/offers/ + components/offers/                   강사 둘러보기·제안(보내기·철회·수락/거절) — 연락처 카드는 components/jobs/applicant-contact 공용
+lib/moderation/ + components/moderation/           신고하기(report-button: 공고 상세·센터 프로필·강사 이력서) · 관리자 신고 탭(admin-reports)
+                                                   · 조치 확인 창(action-dialog: 공고 숨김·다시 보이기(012)·정지·퇴출·다시 활성, resolve-dialog: 처리 완료·기각)
+                                                   · 회원 탭 조치 버튼(member-actions) · 차단 화면 사유(blocked-notice — 내 계정 알림 본문에서 읽음).
+                                                   쓰기는 011 RPC만. 셸은 AdminReports·MemberActions·BlockedNotice만 끼우고
+                                                   현재 회원 id·활성 여부·로그아웃은 props로 넘긴다(JobViewer.active, reporterId, viewerId)
 ```
 
 ### 공용 — 위치 유지 (WD와 같은 경로)
 ```
 lib/supabase/ (client, admin, database.types, keep-login)   lib/brand.ts   lib/image.ts   lib/utils.ts
 components/ui/ (shadcn)
+components/shared/ (step-question, use-focus-item — 알림에서 온 항목 찾아 강조)
 components/shared/step-question.tsx   공용 UI 조각 (셸·도메인 어디서든 import 가능)
 ```
 
@@ -97,6 +110,13 @@ components/shared/step-question.tsx   공용 UI 조각 (셸·도메인 어디서
 
 **남은 정리 (테스트 데이터를 지운 뒤)**: 옛 Storage 버킷 `documents`와 그 정책(`documents_owner_*`, `documents_admin_*`)을 지우고 `verification_documents_bucket_check`를 `verification-docs` 하나로 좁힌다.
 
+**알림 합치기 (010, `20261028_010_notifications`)** — 지금은 WD와 따로(이름 충돌 회피), 합칠 때 결정:
+- 앱 안 알림: AQUA `aqua_notifications(kind, title, body, link, read_at)` ↔ WD `notifications(message, type, category, related_id, read)`. 합칠 때 WD 표로 옮기려면 kind→category(예: `aquajob_*`) 매핑, title+body→message, link는 WD 딥링크 형식으로 바꾼다. 또는 AQUA 표를 그대로 두고 종 화면이 두 표를 합쳐 보여 준다(종 개수·읽음 처리 두 번 주의).
+- 푸시 구독: 기기(endpoint)는 하나라 `aqua_push_subscriptions`를 WD `push_subscriptions`로 합친다(endpoint unique 충돌 시 last_used_at 최신 우선). 같은 기기에 대기열·발송 API가 둘이면 같은 알림이 두 번 갈 수 있으니 발송 API(`/api/push/flush`)도 하나로 합친다 — WD는 비밀값 없이 호출(멱등), AQUA는 `x-aqua-push-secret` 필수: 합칠 때 비밀값 방식으로 통일 권장.
+- 알림 설정: WD `push_preferences`(종류별 끄기)가 AQUA엔 없다 — 합칠 때 AQUA 종류를 한 칸(예: `aquajob`)으로 넣는다.
+- VAPID 키: 두 앱이 다른 키를 쓰면 기기 구독이 키에 묶여 있어 합칠 때 다시 구독해야 한다. 같은 도메인으로 합칠 계획이면 그때 키 하나로 정하고 재구독 안내.
+- 예약 작업: pg_cron `aqua-daily-notify`(00:00 UTC, 서류 만료 알림·대기열 정리)는 이름이 겹치지 않아 그대로 둘 수 있다.
+
 **합칠 때까지 미룸**: `is_admin` 시그니처 통일, `profiles` 컬럼 통일, `center_members`, 연락처 병합,
 `handle_new_user`/guard 병합, `admin_actions` 병합, `platform_admin` 역할.
 
@@ -108,7 +128,7 @@ components/shared/step-question.tsx   공용 UI 조각 (셸·도메인 어디서
 - [ ] 구독: `center_has_product`/`user_has_product`를 WD 결제·구독 표에 연결(센터앱 `center_app` 포함), 묶음 상품 규칙 반영
 - [ ] 연락처: AQUA `private_contacts`와 WD profiles의 phone/email 관계 결정(병합 또는 유지), RLS 재확인
 - [ ] `handle_new_user` + `guard_profile_privileged_columns` + 트리거 `profiles_guard_privileged`를 수작업 병합(최신 정의 파일 기준)
-- [ ] `admin_actions` 병합(컬럼·정책), 감사 기록 유지
+- [ ] `admin_actions` 병합(컬럼·정책), 감사 기록 유지 — AQUA는 011에서 `note`·`target_job_id` 칸을 더했다(조치 사유 코드는 `reason`). 신고 표 `job_reports`(011)는 접두어가 있어 그대로 옮긴다(`target_type` center = `centers.id`)
 - [ ] Storage `avatars` 정책을 `{uid}/...` 기준으로 하나로 병합, `verification-docs` 정책 유지(옛 `documents` 버킷이 남아 있으면 먼저 정리)
 - [ ] `platform_admin` 역할 도입: AQUA admin → platform_admin, WD admin(센터1 관리자)은 그대로. 서류 심사·공고 관리 RLS를 platform_admin 기준으로
 - [ ] 셸 교체: `components/app-shell`, `lib/app-shell`을 WD 셸(`useAuth`, 라우터, 역할 전환)로 대체하고, 도메인 화면을 WD 라우팅에 연결(props 주입)
@@ -132,6 +152,15 @@ components/shared/step-question.tsx   공용 UI 조각 (셸·도메인 어디서
   비로그인 요약(`list_public_jobs`, `get_job_summary`, 센터 공개 프로필 기본 칸)은 그대로 누구나.
 - 007(`20261025_007_phase2_hardening`): `update_job_post`·`select_applicant`·`get_applicant_contact`·`talent_profiles` 센터 조회 정책도 호출자 센터의 `aquajob`(`job_center_entitled()`)을 확인한다. `close_job_post`는 구독 없이도 된다.
   공개 RPC(`list_public_jobs`·`get_job_summary`·`get_job_detail`)의 `owner_id`와 `get_center_public_profile`의 `user_id`는 주인·관리자에게만(그 밖에는 null) — 센터 구분은 `center_id`, 센터 서류 사실은 `get_center_public_facts(center_id)`. `center_profiles` 직접 조회는 주인·관리자만.
+- 008(`20261026_008_pre_paid_security`): `job_applications` 공고 주인 분기도 `job_center_entitled()`(구독 없는 센터는 지원자 이름·한마디도 직접 조회 불가). `job_posts` 주인 분기는 활성 계정만.
+- **강사 정보 vs 센터 이름 (008)**: 강사 정보(이력서 `talent_profiles` · 강사 서류 사실 · 강사 이름)는 `job_can_view_talent(대상)` 하나로 판정한다 —
+  본인 · 관리자 · (보는 사람이 활성 + 구독 센터(`job_center_entitled()`) × (대상의 이력서가 공개 또는 대상이 내 공고에 지원, 취소 제외)).
+  `can_view_profile`의 "대상이 센터 역할" 분기는 **활성** 센터의 profiles 행(이름 등 계정 기본 칸)만 연다(정지·퇴출 센터는 본인·관리자만) — 겸용(센터+강사) 계정이라도 이 분기로는
+  강사 정보가 열리지 않는다. `get_public_facts`는 센터 서류 4종(사업자등록증·여행업·대표자 신분증·대표 강사 자격증)만 "대상이 활성 센터면 누구나",
+  그 밖의 서류는 로그인 + `job_can_view_talent`. 강사 정보를 여는 새 조건(예: 제안 수락)은 `job_can_view_talent` 안에만 더한다.
+- 009(`20261027_009_offers`): 제안. `browse_instructors`는 호출자 센터의 `aquajob`(`job_center_entitled()`), `send_offer`는 공고 센터의 `aquajob`(`center_has_product`) + 제안 서류 요건(`has_requirements('send_offer')`), `respond_offer` 수락은 강사의 `aquajob_talent`(거절은 구독 없이), `get_offer_contact`는 `get_applicant_contact`와 같은 확인(공고 주인 활성 + 센터 `aquajob` + 수락 + 강사 활성). `job_offers` 직접 조회도 공고 주인 분기에 `job_center_entitled()`. `job_can_view_talent`에 "내 공고의 제안을 수락한 강사"를 더했다. 모집 인원은 선택한 지원 + 수락한 제안(`job_filled_count`).
+- 010(`20261028_010_notifications`): 알림·푸시는 구독과 상관없이 동작(알림 받는 것은 유료 기능이 아님). 푸시는 활성 회원만(계정 정지·퇴출 알림만 당사자에게).
+- 011(`20261029_011_moderation`): 신고(`submit_report`)·관리자 조치(`admin_*`)는 구독과 상관없다(활성 회원·관리자 여부만). 관리자 조치 RPC는 `is_admin()` — 합칠 때 `platform_admin` 기준으로 바꾼다.
 - 결제를 붙일 때는 이 두 함수 안만 바꾼다(구독 표 조회). RPC·정책에서 `paid_mode`로 직접 분기하지 않는다.
 
 ### centers: 지금 vs 합칠 때

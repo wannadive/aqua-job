@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { listAllJobsForAdmin } from "@/lib/jobs/api";
 import { filterAdminJobs, type AdminJobFilter, type AdminJobRow } from "@/lib/jobs/admin";
+import { ModerationActionDialog, type ActionRequest } from "@/components/moderation/action-dialog";
+import { canUnhideJob } from "@/lib/moderation/logic";
 import { JobCard } from "../job-card";
 
 const FILTERS: { key: AdminJobFilter; label: string }[] = [
@@ -13,9 +15,32 @@ const FILTERS: { key: AdminJobFilter; label: string }[] = [
   { key: "closed", label: "마감" },
 ];
 
-/** 관리자 공고 목록(읽기 전용). 숨김·신고 처리는 3단계. */
-export function AdminJobs() {
+/**
+ * 관리자 공고 목록. 숨긴 공고에는 [다시 보이기](012 admin_unhide_job — 서버가 관리자·주인 활성·관리자 공고 아님을 확인).
+ * 숨김·신고 처리는 신고 탭에서.
+ */
+export function AdminJobs({ adminId = null }: { adminId?: string | null } = {}) {
   const [rows, setRows] = useState<AdminJobRow[] | null>(null);
+  const [action, setAction] = useState<(ActionRequest & { key: number }) | null>(null);
+  const seq = useRef(0);
+  const alive = useRef(true);
+
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  // 다시 보이기 뒤: 공고 목록만 다시 읽는다
+  const reload = useCallback(async () => {
+    try {
+      const l = await listAllJobsForAdmin();
+      if (alive.current) setRows(l);
+    } catch {
+      if (alive.current) toast.error("공고 목록을 새로 불러오지 못했어요");
+    }
+  }, []);
   const [loadError, setLoadError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [filter, setFilter] = useState<AdminJobFilter>("all");
@@ -78,12 +103,28 @@ export function AdminJobs() {
             showStatus
             dimmed={r.job.status !== "open"}
             extra={
-              <span className="text-xs font-semibold text-ink">
-                {r.applied}명 지원 · 선택 {r.selected}/{r.job.headcount}
+              <span className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-ink">
+                  {r.applied}명 지원 · 선택·수락 {r.selected + r.acceptedOffers}/{r.job.headcount}
+                </span>
+                {canUnhideJob({ status: r.job.status, ownerId: r.job.ownerId }, adminId) && (
+                  <Button
+                    variant="outline"
+                    className="h-10 border-line px-4 text-sm"
+                    onClick={() =>
+                      setAction({ action: "unhide_job", targetId: r.job.id, targetName: r.job.title, key: ++seq.current })
+                    }
+                  >
+                    다시 보이기
+                  </Button>
+                )}
               </span>
             }
           />
         ))
+      )}
+      {action && (
+        <ModerationActionDialog key={action.key} request={action} onClose={() => setAction(null)} onDone={reload} />
       )}
     </div>
   );

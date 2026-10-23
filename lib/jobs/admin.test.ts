@@ -41,3 +41,26 @@ test("buildAdminJobRows: 유효 상태(기간 지남·정원 참·숨김)와 필
   assert.deepEqual(filterAdminJobs(rows, "open").map((r) => r.job.id), ["o"]);
   assert.equal(filterAdminJobs(rows, "closed").length, 3);
 });
+
+test("buildAdminJobRows: 수락한 제안도 인원에 센다(009)", () => {
+  const rows = buildAdminJobRows(
+    [post({ id: "a", headcount: 2 }), post({ id: "b", headcount: 3 })],
+    [{ job_id: "a", status: "selected" }],
+    [],
+    "2026-10-23",
+    [
+      { job_id: "a", status: "accepted" },
+      { job_id: "b", status: "accepted" },
+      { job_id: "b", status: "offered" },
+      { job_id: "b", status: "declined" },
+    ],
+  );
+  const a = rows.find((r) => r.job.id === "a")!;
+  const b = rows.find((r) => r.job.id === "b")!;
+  assert.equal(a.acceptedOffers, 1);
+  assert.equal(a.job.status, "full");
+  assert.equal(a.job.remaining, 0);
+  assert.equal(b.acceptedOffers, 1);
+  assert.equal(b.job.remaining, 2);
+  assert.equal(b.job.status, "open");
+});

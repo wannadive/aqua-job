@@ -86,7 +86,7 @@ export function validateDraft(type: JobType, d: Draft, today: string, minHeadcou
   }
   const h = Number(d.headcount);
   if (!Number.isInteger(h) || h < 1 || h > 20) return "모집 인원은 1~20명이에요";
-  if (h < minHeadcount) return `이미 ${minHeadcount}명을 선택해서 ${minHeadcount}명보다 적게 줄일 수 없어요`;
+  if (h < minHeadcount) return `이미 ${minHeadcount}명을 선택·제안 수락으로 채워서 ${minHeadcount}명보다 적게 줄일 수 없어요`;
   if (!d.description.trim()) return "상세 설명을 입력해 주세요";
   if (!d.deadline) return "마감일을 입력해 주세요";
   if (d.deadline < today) return "마감일은 오늘 이후여야 해요";

@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { PushSettingsCard } from "@/components/notifications/push-settings-card";
+import type { FocusRequest } from "@/components/shared/use-focus-item";
+import type { NavIntent } from "@/lib/notifications/link";
+import { toast } from "sonner";
 import { Briefcase, FileText, Home, Inbox, Send } from "lucide-react";
 import { DocumentList } from "@/components/verification/document-list";
 import { Button } from "@/components/ui/button";
@@ -18,8 +22,13 @@ import { useMyApplications } from "@/components/jobs/use-my-applications";
 import { myApplicationCounts } from "@/lib/jobs/logic";
 import type { JobSummary } from "@/lib/jobs/types";
 import { ResumeEditor } from "@/components/talent-profile/resume-editor";
+import { ReceivedOffers } from "@/components/offers/received-offers";
+import { useReceivedOffers } from "@/components/offers/use-offers";
 
 type Tab = "home" | "jobs" | "offers" | "applications" | "resume";
+
+/** 알림에서 온 이동 요청(셸 라우터가 준다). seq가 바뀔 때마다 한 번 적용한다 */
+export type InstructorNav = Extract<NavIntent, { role: "instructor" }> & { seq: number };
 
 const TABS: { key: Tab; label: string; icon: typeof Home }[] = [
   { key: "home", label: "홈", icon: Home },
@@ -29,24 +38,21 @@ const TABS: { key: Tab; label: string; icon: typeof Home }[] = [
   { key: "resume", label: "내 이력서", icon: FileText },
 ];
 
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div className="flex min-h-[60dvh] flex-col items-center justify-center text-center">
-      <h1 className="text-2xl font-bold text-ink">{title}</h1>
-      <p className="mt-2 text-sm text-muted">곧 열려요</p>
-    </div>
-  );
-}
-
 function HomeTab({
   onResume,
   counts,
   countsError,
   onRetryCounts,
   onApplications,
+  pendingOffers,
+  onOffers,
 }: {
   onResume: () => void;
+  /** selected = 선택된 지원 + 수락한 제안 */
   counts: { active: number; total: number; selected: number } | null;
+  /** 답을 기다리는 받은 제안 수(모르면 null) */
+  pendingOffers: number | null;
+  onOffers: () => void;
   countsError: boolean;
   onRetryCounts: () => void;
   onApplications: () => void;
@@ -117,6 +123,15 @@ function HomeTab({
 
       <section className="rounded-card bg-white p-5 shadow-sm">
         <h2 className="text-lg font-bold text-ink">내 지원</h2>
+        {pendingOffers != null && pendingOffers > 0 && (
+          <button
+            type="button"
+            onClick={onOffers}
+            className="mt-3 w-full rounded-xl bg-surface py-3 text-center text-sm font-semibold text-ink"
+          >
+            답을 기다리는 제안 {pendingOffers}건
+          </button>
+        )}
         {counts ? (
           <>
             {counts.selected > 0 && (
@@ -125,7 +140,7 @@ function HomeTab({
                 onClick={onApplications}
                 className="mt-3 w-full rounded-xl bg-ok-bg py-3 text-center text-sm font-semibold text-ok"
               >
-                선택됐어요 · {counts.selected}건 확인하기
+                선택·수락 {counts.selected}건 확인하기
               </button>
             )}
             <div className="mt-3 grid grid-cols-2 gap-2 text-center">
@@ -181,6 +196,8 @@ function HomeTab({
         {docs && docs.expiring > 0 && <p className="mt-3 text-sm font-medium text-warn">곧 만료 {docs.expiring}건</p>}
       </section>
 
+      <PushSettingsCard />
+
       <button type="button" onClick={() => void logout()} className="w-full py-3 text-center text-sm font-medium text-muted">
         로그아웃
       </button>
@@ -188,13 +205,79 @@ function HomeTab({
   );
 }
 
-export function InstructorShell() {
+export function InstructorShell({ nav = null, onNavConsumed }: { nav?: InstructorNav | null; onNavConsumed?: () => void } = {}) {
   const [tab, setTab] = useState<Tab>("home");
   const [applying, setApplying] = useState<JobSummary | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const my = useMyApplications();
-  const counts = my.loading || my.error ? null : myApplicationCounts(my.apps);
+  const rec = useReceivedOffers();
+  const acceptedOffers = rec.offers.filter((o) => o.status === "accepted");
+  const baseCounts = my.loading || my.error ? null : myApplicationCounts(my.apps);
+  const counts = baseCounts && { ...baseCounts, selected: baseCounts.selected + acceptedOffers.length };
+  const pendingOffers = rec.loading || rec.error ? null : rec.offers.filter((o) => o.status === "offered").length;
   const [openJobId, setOpenJobId] = useState<string | null>(null);
+  const [focusOffer, setFocusOffer] = useState<FocusRequest | null>(null);
+  const mountedRef = useRef(false);
+  const latestNavRef = useRef(0);
+  const tabRef = useRef<Tab>("home");
+  const [focusJob, setFocusJob] = useState<FocusRequest | null>(null);
+
+  // 알림 → 탭 이동 + 해당 항목. 이동한 화면의 데이터만 다시 불러온다(알림은 화면을 연 뒤에 왔을 수 있다).
+  useEffect(() => {
+    if (!nav) return;
+    // 방금 열린 화면이면(역할 전환) 훅들이 이미 처음 불러오는 중이라 다시 부르지 않는다
+    const fresh = !mountedRef.current;
+    const seq = nav.seq;
+    const target = nav.tab;
+    latestNavRef.current = seq;
+    tabRef.current = target;
+    setApplying(null);
+    setFocusOffer(null);
+    setFocusJob(null);
+    const offerFocus = target === "offers" && nav.offerId ? { id: nav.offerId, seq } : null;
+    const jobFocus = target === "applications" && nav.jobId ? { id: nav.jobId, seq } : null;
+    // 앱을 연 채 알림을 누르면 지금 목록에는 새 항목이 없거나 묶음(답 대기→마감, 지원함→선택)이 바뀌었을 수 있다.
+    // → 다시 불러온 뒤에 찾기 요청을 건다(더 새 알림 이동이 있었거나 다른 탭으로 나갔으면 버림).
+    const after = (p: Promise<unknown>, apply: () => void) =>
+      void p.then(() => {
+        if (latestNavRef.current === seq && tabRef.current === target) apply();
+      });
+    if (target === "offers") {
+      if (fresh) setFocusOffer(offerFocus);
+      else after(rec.reload(), () => setFocusOffer(offerFocus));
+    }
+    if (target === "applications") {
+      if (fresh) setFocusJob(jobFocus);
+      else after(Promise.all([my.reload(), rec.reload()]), () => setFocusJob(jobFocus));
+    }
+    if (nav.tab === "jobs") {
+      setOpenJobId(nav.jobId);
+      if (!fresh) setReloadKey((n) => n + 1);
+    }
+    setTab(nav.tab);
+    onNavConsumed?.();
+  }, [nav]); // eslint-disable-line react-hooks/exhaustive-deps -- nav가 바뀔 때만 한 번
+
+  useEffect(() => {
+    mountedRef.current = true;
+  }, []);
+
+  // 다른 탭으로 나가면 강조 요청을 버린다(돌아와도 다시 강조·안내하지 않게)
+  useEffect(() => {
+    tabRef.current = tab;
+    if (tab !== "offers") setFocusOffer(null);
+    if (tab !== "applications") setFocusJob(null);
+  }, [tab]);
+  // 이 공고로 받은 제안이 답 대기·수락이면 지원 대신 제안 탭으로(서버 apply_to_job도 막는다 — 화면은 안내만)
+  const startApply = (job: JobSummary) => {
+    const offer = rec.offers.find((o) => o.jobId === job.id && (o.status === "offered" || o.status === "accepted"));
+    if (offer) {
+      toast(offer.status === "offered" ? "이 공고로 받은 제안이 있어요. 받은 제안에서 답해 주세요" : "이 공고는 이미 제안을 수락했어요");
+      setTab("offers");
+      return;
+    }
+    setApplying(job);
+  };
   return (
     <div className="mx-auto min-h-app w-full max-w-md">
       <main className="px-5 pb-28 pt-8">
@@ -205,10 +288,25 @@ export function InstructorShell() {
             countsError={my.error && !my.loading}
             onRetryCounts={() => void my.reload()}
             onApplications={() => setTab("applications")}
+            pendingOffers={pendingOffers}
+            onOffers={() => setTab("offers")}
           />
         )}
-        {tab === "jobs" && <JobsBrowser key={openJobId ?? "list"} initialJobId={openJobId} onApply={setApplying} reloadKey={reloadKey} />}
-        {tab === "offers" && <ComingSoon title="제안" />}
+        {tab === "jobs" && <JobsBrowser key={openJobId ?? "list"} initialJobId={openJobId} onApply={startApply} reloadKey={reloadKey} />}
+        {tab === "offers" && (
+          <ReceivedOffers
+            offers={rec.offers}
+            loading={rec.loading}
+            error={rec.error && !rec.loading}
+            onRetry={() => void rec.reload()}
+            onOpenJob={(id) => {
+              setOpenJobId(id);
+              setTab("jobs");
+            }}
+            onChanged={rec.reload}
+            focus={focusOffer}
+          />
+        )}
         {tab === "applications" && (
           <MyApplications
             apps={my.apps}
@@ -220,6 +318,8 @@ export function InstructorShell() {
               setTab("jobs");
             }}
             onChanged={my.reload}
+            acceptedOffers={acceptedOffers}
+            focusJob={focusJob}
           />
         )}
         {tab === "resume" && (
