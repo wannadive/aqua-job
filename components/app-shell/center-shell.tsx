@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Briefcase, Home, Search, Settings, Users } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentList } from "@/components/verification/document-list";
+import { Applicants } from "@/components/jobs/applicants";
 import { JobForm } from "@/components/jobs/job-form";
 import { MyJobs } from "@/components/jobs/my-jobs";
 import { summarize, useMyJobs } from "@/components/jobs/use-my-jobs";
@@ -165,6 +166,9 @@ type Overlay = { kind: "new" } | { kind: "edit"; jobId: string } | null;
 export function CenterShell() {
   const [tab, setTab] = useState<Tab>("home");
   const [overlay, setOverlay] = useState<Overlay>(null);
+  // 지원자 탭의 공고 필터(null = 전체). 공고 카드 [지원자 보기]는 그 공고로 연다.
+  const [applicantJob, setApplicantJob] = useState<string | null>(null);
+  const changeApplicantJob = useCallback((id: string | null) => setApplicantJob(id), []);
   const my = useMyJobs();
   const stats = my.loading || my.error ? null : summarize(my.jobs, my.counts);
 
@@ -202,11 +206,24 @@ export function CenterShell() {
             onRetry={() => void my.reload()}
             onNew={() => setOverlay({ kind: "new" })}
             onEdit={(j) => setOverlay({ kind: "edit", jobId: j.id })}
-            onApplicants={() => setTab("applicants")}
+            onApplicants={(j) => {
+              setApplicantJob(j.id);
+              setTab("applicants");
+            }}
             onChanged={my.reload}
           />
         )}
-        {tab === "applicants" && <ComingSoon title="지원자" />}
+        {tab === "applicants" && (
+          <Applicants
+            jobs={my.jobs}
+            jobsLoading={my.loading}
+            jobsError={my.error}
+            onRetryJobs={() => void my.reload()}
+            jobFilter={applicantJob}
+            onJobFilterChange={changeApplicantJob}
+            onChanged={my.reload}
+          />
+        )}
         {tab === "instructors" && <ComingSoon title="강사 찾기" />}
         {tab === "settings" && <SettingsTab />}
       </main>
@@ -216,7 +233,10 @@ export function CenterShell() {
             <li key={key} className="flex-1">
               <button
                 type="button"
-                onClick={() => setTab(key)}
+                onClick={() => {
+                  if (key === "applicants") setApplicantJob(null);
+                  setTab(key);
+                }}
                 aria-current={tab === key ? "page" : undefined}
                 className={`flex w-full flex-col items-center gap-1 py-2.5 text-[11px] font-semibold ${tab === key ? "text-ink" : "text-muted"}`}
               >

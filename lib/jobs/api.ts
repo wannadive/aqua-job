@@ -237,6 +237,18 @@ export async function listApplicants(jobId: string): Promise<JobApplication[]> {
   return ((data ?? []) as any[]).map(applicationFromRow);
 }
 
+/** 내 여러 공고의 지원자를 한 번에(최신순, 지원 취소 포함 — 화면에서 거른다). 연락처는 없다. */
+export async function listApplicantsForJobs(jobIds: string[]): Promise<JobApplication[]> {
+  if (jobIds.length === 0) return [];
+  const { data, error } = await (createClient() as any)
+    .from("job_applications")
+    .select("id, job_id, instructor_id, message, status, created_at, decided_at, profiles(display_name)")
+    .in("job_id", jobIds)
+    .order("created_at", { ascending: false });
+  if (error) fail(error);
+  return ((data ?? []) as any[]).map(applicationFromRow);
+}
+
 /** 선택된 지원자의 연락처. 권한이 없거나(42501) 대상이 아니면 null. */
 export async function getApplicantContact(appId: string): Promise<{ phone: string | null; email: string | null } | null> {
   const { data, error } = await (createClient() as any).rpc("get_applicant_contact", { p_app: appId });

@@ -18,6 +18,13 @@ export async function fetchMyInstructorProfile(): Promise<InstructorProfile | nu
   return data ? fromRow(data) : null;
 }
 
+/** 남의 이력서(센터가 지원자 이력서를 볼 때 등). RLS가 허용할 때만 온다 — 없거나 못 보면 null. 연락처는 이 표에 없다. */
+export async function fetchTalentProfile(userId: string): Promise<InstructorProfile | null> {
+  const { data, error } = await createClient().from("talent_profiles").select("*").eq("user_id", userId).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? fromRow(data) : null;
+}
+
 export async function saveInstructorProfile(patch: Partial<InstructorProfile>): Promise<{ error?: string }> {
   try {
     const uid = await myId();
