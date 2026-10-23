@@ -330,10 +330,11 @@ begin
     raise exception 'job_posts_center_id_not_null_and_set_on_create 실패 (요약 center_id %)', v_center;
   end if;
 
+  -- 007부터 user_id(주인 회원 id)는 주인·관리자에게만 — 비로그인은 null
   select p.center_id, p.user_id, p.center_name into v_center, v_user, v_name
   from public.get_center_public_profile(current_setting('merge.c1')::uuid) p;
   if v_center is distinct from current_setting('merge.c1')::uuid
-     or v_user is distinct from 'f6000000-0000-4000-8000-0000000000c1'::uuid
+     or v_user is not null
      or v_name is distinct from '머지다이브' then
     reset role;
     raise exception 'job_posts_center_id_not_null_and_set_on_create 실패 (센터 프로필 %, %, %)', v_center, v_user, v_name;

@@ -130,6 +130,8 @@ components/shared/step-question.tsx   공용 UI 조각 (셸·도메인 어디서
 - 연결된 곳: `create_job_post` → 호출자 센터의 `aquajob`. `can_view_job_detail`(→ `get_job_detail`, 센터 공개 프로필 상세 칸) →
   관리자 · 공고 주인 · 강사의 `aquajob_talent` · 자기 센터의 `aquajob`. `apply_to_job` → 강사의 `aquajob_talent`.
   비로그인 요약(`list_public_jobs`, `get_job_summary`, 센터 공개 프로필 기본 칸)은 그대로 누구나.
+- 007(`20261025_007_phase2_hardening`): `update_job_post`·`select_applicant`·`get_applicant_contact`·`talent_profiles` 센터 조회 정책도 호출자 센터의 `aquajob`(`job_center_entitled()`)을 확인한다. `close_job_post`는 구독 없이도 된다.
+  공개 RPC(`list_public_jobs`·`get_job_summary`·`get_job_detail`)의 `owner_id`와 `get_center_public_profile`의 `user_id`는 주인·관리자에게만(그 밖에는 null) — 센터 구분은 `center_id`, 센터 서류 사실은 `get_center_public_facts(center_id)`. `center_profiles` 직접 조회는 주인·관리자만.
 - 결제를 붙일 때는 이 두 함수 안만 바꾼다(구독 표 조회). RPC·정책에서 `paid_mode`로 직접 분기하지 않는다.
 
 ### centers: 지금 vs 합칠 때

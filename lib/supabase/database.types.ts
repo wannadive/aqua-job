@@ -42,7 +42,8 @@ export type DestinationKind = "domestic" | "overseas";
 /** list_public_jobs · get_job_summary 한 행(상세 설명·센터 상세 없음). date는 YYYY-MM-DD, time은 HH:MM:SS */
 export interface JobSummaryRow {
   id: string;
-  owner_id: string;
+  /** 공고 주인 회원 id — 주인·관리자에게만, 그 밖에는 null (007) */
+  owner_id: string | null;
   /** centers.id (006) */
   center_id: string;
   center_name: string;
@@ -107,8 +108,8 @@ export interface PublicFactRow {
 export interface CenterPublicProfileRow {
   /** centers.id (006) */
   center_id: string;
-  /** 센터 계정(주인) 회원 id */
-  user_id: string;
+  /** 센터 계정(주인) 회원 id — 주인·관리자에게만, 그 밖에는 null (007) */
+  user_id: string | null;
   center_name: string;
   venues: string[];
   teaching_days: string[];
@@ -556,6 +557,12 @@ export interface Database {
       /** p_center_id = centers.id (006) */
       get_center_public_profile: { Args: { p_center_id: string }; Returns: CenterPublicProfileRow[] };
       list_center_job_history: { Args: { p_center_id: string }; Returns: CenterJobHistoryRow[] };
+      /** 007: 센터 서류 사실(센터 서류 종류만), centers.id로 */
+      get_center_public_facts: { Args: { p_center_id: string }; Returns: PublicFactRow[] };
+      /** 007: 공고 지역 목록(REGION_OPTIONS와 같아야 함) */
+      job_region_options: { Args: Record<string, never>; Returns: string[] };
+      /** 007: 호출자 센터가 활성 + aquajob 구독인가 */
+      job_center_entitled: { Args: Record<string, never>; Returns: boolean };
       /** 006 구독 자리: 무료 기간엔 true, 유료 전환 후엔 결제 연동 전까지 관리자만 */
       user_has_product: { Args: { p_user: string; p_product: ProductKey }; Returns: boolean };
       center_has_product: { Args: { p_center_id: string; p_product: ProductKey }; Returns: boolean };
