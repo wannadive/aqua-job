@@ -1,4 +1,4 @@
-// 손으로 쓴 DB 타입 (supabase/migrations/ 001 기반 스키마 + 003 여러 역할 + 005 공고 + 006 합류 대비 이름·centers 기준).
+// 손으로 쓴 DB 타입 (supabase/migrations/ 001 기반 스키마 + 003 여러 역할 + 005 공고 + 006 합류 대비 이름·centers 기준 + 009 제안).
 // 스키마를 바꾸면 여기도 같이 고친다.
 
 export type Json =
@@ -38,6 +38,8 @@ export type JobClosedReason = "manual" | "full" | "expired";
 export type JobEffectiveStatus = "open" | "full" | "expired" | "closed" | "hidden";
 export type ApplicationStatusValue = "applied" | "selected" | "withdrawn" | "not_selected";
 export type DestinationKind = "domestic" | "overseas";
+// 009 제안
+export type OfferStatusValue = "offered" | "accepted" | "declined" | "withdrawn" | "expired";
 
 /** list_public_jobs · get_job_summary 한 행(상세 설명·센터 상세 없음). date는 YYYY-MM-DD, time은 HH:MM:SS */
 export interface JobSummaryRow {
@@ -102,6 +104,36 @@ export interface PublicFactRow {
   verified_at: string | null;
   org: string | null;
   grade: string | null;
+}
+
+/** 009 browse_instructors 한 행: 이력서 공개 칸 + 유효한 서류 사실만(연락처·비공개 칸 없음). intro는 200자까지 */
+export interface BrowseInstructorRow {
+  user_id: string;
+  display_name: string;
+  photo_path: string | null;
+  gender: string | null;
+  age_band: string | null;
+  regions: string[];
+  scopes: string[];
+  certifications: { org: string | null; level: string | null }[];
+  instructor_level: string | null;
+  instructor_years: number | null;
+  teaching_style_tags: string[];
+  intro: string | null;
+  available_days: string[];
+  desired_rate: string | null;
+  records: Json;
+  facts: { doc_type: DocTypeValue; valid_until: string | null; org: string | null; grade: string | null }[];
+}
+
+/** 009 browse_instructors 필터(모두 선택) */
+export interface BrowseInstructorFilters {
+  regions?: string[];
+  org?: string;
+  level?: string;
+  scope?: string;
+  available_days?: string[];
+  verified_only?: boolean;
 }
 
 /** get_center_public_profile: detail_visible=false면 상세 칸은 null */
@@ -519,6 +551,23 @@ export interface Database {
         Update: { [_ in never]: never };
         Relationships: [];
       };
+      job_offers: {
+        Row: {
+          id: string;
+          job_id: string;
+          center_id: string;
+          instructor_id: string;
+          message: string | null;
+          status: OfferStatusValue;
+          created_at: string;
+          /** 상태가 offered에서 바뀐 시각(수락·거절·철회·마감) */
+          responded_at: string | null;
+        };
+        // 직접 쓰기 불가 — send_offer · withdraw_offer · respond_offer RPC로만
+        Insert: { [_ in never]: never };
+        Update: { [_ in never]: never };
+        Relationships: [];
+      };
       // job_views는 직접 접근 불가(record_job_view RPC로만) — 타입에 넣지 않는다
     };
     Views: { [_ in never]: never };
@@ -579,6 +628,21 @@ export interface Database {
       apply_to_job: { Args: { p_job: string; p_message?: string | null }; Returns: string };
       withdraw_application: { Args: { p_app: string }; Returns: undefined };
       select_applicant: { Args: { p_app: string }; Returns: undefined };
+      /** 009: 모집 인원 수 = 선택한 지원 + 수락한 제안 */
+      job_filled_count: { Args: { p_job: string }; Returns: number };
+      /** 009: 강사 둘러보기 — 활성 + 구독 센터만 */
+      browse_instructors: {
+        Args: { p_filters?: BrowseInstructorFilters; p_limit?: number; p_offset?: number };
+        Returns: BrowseInstructorRow[];
+      };
+      send_offer: { Args: { p_job: string; p_instructor: string; p_message?: string | null }; Returns: string };
+      withdraw_offer: { Args: { p_offer: string }; Returns: undefined };
+      respond_offer: { Args: { p_offer: string; p_accept: boolean }; Returns: undefined };
+      /** 009: 수락한 제안의 공고 주인에게만 1행 */
+      get_offer_contact: {
+        Args: { p_offer: string };
+        Returns: { phone: string | null; email: string | null }[];
+      };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

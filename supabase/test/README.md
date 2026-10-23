@@ -12,11 +12,12 @@ Supabase 대시보드 → **SQL Editor**에서 아래 순서로 실행한다.
 6. `supabase/migrations/20261024_006_merge_ready.sql` — 핀프렌즈 합류 대비: 테이블 이름 변경(`instructor_profiles`→`talent_profiles`, `documents`→`verification_documents`, `requirement_rules`→`verification_requirements`, `app_settings`→`aqua_settings`), 서류 버킷 `verification-docs`, `centers` 테이블·`job_posts.center_id`, 구독 권한 자리(`center_has_product`/`user_has_product`)
 7. `supabase/migrations/20261025_007_phase2_hardening.sql` — 2단계 보안 보강: 직접 조회 정책에도 활성 계정·센터 구독 확인(`talent_profiles`, `job_applications` — 공고 주인에게 지원 취소 행 숨김), `center_profiles` 직접 조회는 주인·관리자만, 공고 수정·지원자 선택·연락처에 센터 구독 확인(마감은 구독 없이 가능), 공고 수정 때 서류 요건 재확인, 공고 입력 한도(마감 90일·지역 목록 `job_region_options()`·글자 수), 공개 RPC의 `owner_id`·센터 `user_id`는 주인·관리자에게만(+ `get_center_public_facts`)
 8. `supabase/migrations/20261026_008_pre_paid_security.sql` — 유료 전환 전 보안 정리: 강사 정보(이력서·강사 서류 사실·강사 이름) 판정을 `job_can_view_talent()` 하나로(본인·관리자·구독 센터 × 공개 이력서/내 공고 지원자 — 겸용 계정이 센터라는 이유로는 안 열림), `get_public_facts` 강사 서류는 센터 구독 필요, `job_applications` 공고 주인 분기에 센터 구독, `job_posts` 주인 분기에 활성 계정, 센터 이름(profiles 행)은 활성 센터만 공개
+9. `supabase/migrations/20261027_009_offers.sql` — 제안: `job_offers`(공고 주인·받은 강사·관리자만 조회, 쓰기는 RPC), 강사 둘러보기 `browse_instructors`(활성 + 구독 센터만, 공개 이력서 칸만), `send_offer`(같은 공고·같은 강사 한 번, 공고당 인원×5건, 지원한 강사 제외) · `withdraw_offer` · `respond_offer`(수락은 강사 구독 + 공고 잠금 + 인원 확인, 거절은 언제나) · `get_offer_contact`(수락한 제안의 공고 주인만), 모집 인원 = 선택 + 수락한 제안(`job_filled_count`), 공고 마감 때 보낸 제안은 마감, 제안을 수락한 강사의 이력서는 그 센터가 본다
 
-각 파일 내용을 통째로 붙여 넣고 **Run**. 반드시 001 → 002 → 003 → 004 → 005 → 006 → 007 → 008 순서로 실행한다.
+각 파일 내용을 통째로 붙여 넣고 **Run**. 반드시 001 → 002 → 003 → 004 → 005 → 006 → 007 → 008 → 009 순서로 실행한다.
 여러 번 실행해도 괜찮다(이미 있는 테이블·정책은 건너뛰거나 다시 만든다).
 
-## 2. 보안 검사 (008까지 적용한 뒤)
+## 2. 보안 검사 (009까지 적용한 뒤)
 
 006에서 테이블 이름이 바뀌었으므로 아래 검사 파일들도 새 이름(`talent_profiles`, `verification_documents`, `verification_requirements`, `aqua_settings`, 버킷 `verification-docs`)으로 고쳐 두었다. **006을 적용하지 않은 DB에서는 1~5번 검사도 실패한다**(테이블이 없다는 오류).
 
@@ -28,8 +29,9 @@ Supabase 대시보드 → **SQL Editor**에서 아래 순서로 실행한다.
 6. `supabase/test/phase2_merge_ready_checks.sql` → 성공하면 `merge ok`
 7. `supabase/test/phase2_hardening_checks.sql` → 성공하면 `p2hardening ok`
 8. `supabase/test/phase3_pre_checks.sql` → 성공하면 `pre3 ok`
+9. `supabase/test/phase3_offers_checks.sql` → 성공하면 `offers ok`
 
-전체 순서: 001 → 002 → 003 → 004 → 005 → 006 → 007 → 008 → phase1_checks → phase1_hardening_checks → phase1_multirole_checks → phase2_pre_checks → phase2_jobs_checks → phase2_merge_ready_checks → phase2_hardening_checks → phase3_pre_checks
+전체 순서: 001 → 002 → 003 → 004 → 005 → 006 → 007 → 008 → 009 → phase1_checks → phase1_hardening_checks → phase1_multirole_checks → phase2_pre_checks → phase2_jobs_checks → phase2_merge_ready_checks → phase2_hardening_checks → phase3_pre_checks → phase3_offers_checks
 
 007 때문에 고친 기존 검사: `phase2_merge_ready_checks`의 `job_posts_center_id_not_null_and_set_on_create`는 이제 비로그인이 받는 센터 프로필 `user_id`가 null이어야 통과한다(007 전 DB에서는 이 검사가 실패한다).
 008 때문에 고친 기존 검사: `phase1_multirole_checks`·`phase2_pre_checks`도 이제 트랜잭션 안에서 `paid_mode=false`로 시작한다 — 센터가 강사 이름·이력서를 보는 조건이 센터 구독에 걸리기 때문(007·008). 이제 모든 검사 파일이 운영 `paid_mode` 값과 상관없이 무료 기간으로 시작한다(유료 전환 검사는 각 파일 안에서 잠깐 켰다 끈다).
@@ -46,6 +48,7 @@ Supabase 대시보드 → **SQL Editor**에서 아래 순서로 실행한다.
 - 합류 대비 검사는 006이 적용되지 않았으면 실패한다(`renamed_tables_exist_old_gone 실패`).
 - 2단계 보안 보강 검사는 007이 적용되지 않았으면 실패한다(예: `payload_bounds 실패` 또는 `get_center_public_facts` 함수가 없다는 오류).
 - 유료 전 보안 정리 검사는 008이 적용되지 않았으면 실패한다(예: `unsubscribed_center_cannot_list_applications 실패`).
+- 제안 검사는 009가 적용되지 않았으면 실패한다(`browse_instructors` 함수가 없다는 오류).
 
 ## 3. 관리자 지정 (한 번만)
 

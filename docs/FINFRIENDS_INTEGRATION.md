@@ -138,6 +138,7 @@ components/shared/step-question.tsx   공용 UI 조각 (셸·도메인 어디서
   `can_view_profile`의 "대상이 센터 역할" 분기는 **활성** 센터의 profiles 행(이름 등 계정 기본 칸)만 연다(정지·퇴출 센터는 본인·관리자만) — 겸용(센터+강사) 계정이라도 이 분기로는
   강사 정보가 열리지 않는다. `get_public_facts`는 센터 서류 4종(사업자등록증·여행업·대표자 신분증·대표 강사 자격증)만 "대상이 활성 센터면 누구나",
   그 밖의 서류는 로그인 + `job_can_view_talent`. 강사 정보를 여는 새 조건(예: 제안 수락)은 `job_can_view_talent` 안에만 더한다.
+- 009(`20261027_009_offers`): 제안. `browse_instructors`는 호출자 센터의 `aquajob`(`job_center_entitled()`), `send_offer`는 공고 센터의 `aquajob`(`center_has_product`) + 제안 서류 요건(`has_requirements('send_offer')`), `respond_offer` 수락은 강사의 `aquajob_talent`(거절은 구독 없이), `get_offer_contact`는 `get_applicant_contact`와 같은 확인(공고 주인 활성 + 센터 `aquajob` + 수락 + 강사 활성). `job_offers` 직접 조회도 공고 주인 분기에 `job_center_entitled()`. `job_can_view_talent`에 "내 공고의 제안을 수락한 강사"를 더했다. 모집 인원은 선택한 지원 + 수락한 제안(`job_filled_count`).
 - 결제를 붙일 때는 이 두 함수 안만 바꾼다(구독 표 조회). RPC·정책에서 `paid_mode`로 직접 분기하지 않는다.
 
 ### centers: 지금 vs 합칠 때
