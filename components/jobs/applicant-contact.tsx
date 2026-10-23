@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Mail, Phone } from "lucide-react";
 import { getApplicantContact } from "@/lib/jobs/api";
 
+const EMAIL_SHAPE = /^[^\s@<>"',;:\?&#%]+@[^\s@<>"',;:\?&#%]+\.[^\s@<>"',;:\?&#%]+$/;
+
 type State = { kind: "loading" } | { kind: "error" } | { kind: "none" } | { kind: "ok"; phone: string | null; email: string | null };
 
 /**
@@ -51,11 +53,19 @@ export function ApplicantContact({ appId }: { appId: string }) {
               <Phone className="size-4" /> {state.phone}
             </a>
           )}
-          {state.email && (
-            <a href={`mailto:${state.email}`} className="flex min-h-11 items-center gap-2 break-all text-base font-semibold text-ink underline">
-              <Mail className="size-4 shrink-0" /> {state.email}
-            </a>
-          )}
+          {state.email &&
+            (EMAIL_SHAPE.test(state.email) ? (
+              <a
+                href={`mailto:${encodeURIComponent(state.email).replace(/%40/g, "@")}`}
+                className="flex min-h-11 items-center gap-2 break-all text-base font-semibold text-ink underline"
+              >
+                <Mail className="size-4 shrink-0" /> {state.email}
+              </a>
+            ) : (
+              <span className="flex min-h-11 items-center gap-2 break-all text-base font-semibold text-ink">
+                <Mail className="size-4 shrink-0" /> {state.email}
+              </span>
+            ))}
         </div>
       )}
       <p className="mt-2 text-xs text-muted">이 연락처는 선택한 센터에만 보여요</p>

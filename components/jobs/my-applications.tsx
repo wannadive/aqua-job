@@ -49,15 +49,20 @@ export function MyApplications({
     if (!cancelling || busy) return;
     setBusy(true);
     const res = await withdrawApplication(cancelling.id);
-    if (res.error) {
+    try {
+      if (res.error) {
+        // 이미 선택·취소 등으로 바뀌었을 수 있다: 창을 닫고 현황을 다시 불러온다
+        toast.error(res.error);
+        setCancelling(null);
+        await onChanged();
+        return;
+      }
+      toast.success("지원을 취소했어요");
+      setCancelling(null);
+      await onChanged();
+    } finally {
       setBusy(false);
-      toast.error(res.error);
-      return;
     }
-    toast.success("지원을 취소했어요");
-    setCancelling(null);
-    await onChanged();
-    setBusy(false);
   };
 
   return (

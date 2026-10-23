@@ -1,18 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FileCheck, Settings, Users } from "lucide-react";
+import { Briefcase, FileCheck, Settings, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { fetchMembers, type MemberRow } from "@/lib/app-shell/account/admin-api";
 import { kstDate, ROLE_LABEL } from "@/lib/verification/admin-logic";
 import { useAuth } from "@/lib/app-shell/auth-provider";
 import { ReviewQueue } from "@/components/verification/admin/review-queue";
+import { AdminJobs } from "@/components/jobs/admin/admin-jobs";
 
-type Tab = "review" | "members" | "settings";
+type Tab = "review" | "jobs" | "members" | "settings";
 
 const TABS: { key: Tab; label: string; icon: typeof Users }[] = [
   { key: "review", label: "서류 확인", icon: FileCheck },
+  { key: "jobs", label: "공고", icon: Briefcase },
   { key: "members", label: "회원", icon: Users },
   { key: "settings", label: "설정", icon: Settings },
 ];
@@ -100,6 +102,7 @@ export function AdminShell() {
     <div className="mx-auto min-h-app w-full max-w-md">
       <main className="px-5 pb-28 pt-8">
         {tab === "review" && <ReviewQueue />}
+        {tab === "jobs" && <AdminJobs />}
         {tab === "members" && <MembersTab />}
         {tab === "settings" && <SettingsTab />}
       </main>

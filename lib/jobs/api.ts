@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/client";
 import { getDeviceKey } from "@/lib/jobs/device-key";
 import type { DocRecord } from "@/lib/verification/types";
+import { todayKst } from "@/lib/verification/logic";
+import { buildAdminJobRows, type AdminJobRow } from "./admin";
 import { countApplications, jobErrorMessage } from "./logic";
 import {
   applicationFromRow,
@@ -291,4 +293,23 @@ export async function withdrawApplication(appId: string): Promise<{ error?: stri
 export async function selectApplicant(appId: string): Promise<{ error?: string }> {
   const { error } = await (createClient() as any).rpc("select_applicant", { p_app: appId });
   return error ? { error: jobErrorMessage(error) } : {};
+}
+
+// ---------- 관리자 (읽기 전용) ----------
+
+/**
+ * 관리자 공고 목록. job_posts·job_applications는 관리자 RLS(is_admin)로 읽고, 센터 이름은 공개 열(centers.id,name)만 읽는다.
+ * 지원은 상태만 가져온다(연락처·이름 없음). 관리자가 아니면 RLS 때문에 빈 목록이 된다.
+ */
+export async function listAllJobsForAdmin(): Promise<AdminJobRow[]> {
+  const sb = createClient() as any;
+  const [posts, apps, centers] = await Promise.all([
+    sb.from("job_posts").select("*").order("created_at", { ascending: false }),
+    sb.from("job_applications").select("job_id, status"),
+    sb.from("centers").select("id, name"),
+  ]);
+  if (posts.error) fail(posts.error);
+  if (apps.error) fail(apps.error);
+  if (centers.error) fail(centers.error);
+  return buildAdminJobRows(posts.data ?? [], apps.data ?? [], centers.data ?? [], todayKst());
 }

@@ -41,10 +41,14 @@ function ComingSoon({ title }: { title: string }) {
 function HomeTab({
   onResume,
   counts,
+  countsError,
+  onRetryCounts,
   onApplications,
 }: {
   onResume: () => void;
   counts: { active: number; total: number; selected: number } | null;
+  countsError: boolean;
+  onRetryCounts: () => void;
   onApplications: () => void;
 }) {
   const { user, logout } = useAuth();
@@ -55,7 +59,9 @@ function HomeTab({
 
   useEffect(() => {
     let cancelled = false;
-    fetchMyInstructorProfile().then((p) => !cancelled && setProfile(p)).catch(() => {});
+    fetchMyInstructorProfile()
+      .then((p) => !cancelled && setProfile(p))
+      .catch(() => {});
     setDocError(false);
     fetchMyDocuments()
       .then((list) => {
@@ -133,6 +139,13 @@ function HomeTab({
               </div>
             </div>
           </>
+        ) : countsError ? (
+          <div className="mt-2 flex items-center justify-between gap-3 text-sm text-muted">
+            지원 현황을 불러오지 못했어요
+            <button type="button" onClick={onRetryCounts} className="font-semibold text-ink underline">
+              다시 시도
+            </button>
+          </div>
         ) : (
           <p className="mt-2 text-sm text-muted">불러오는 중…</p>
         )}
@@ -185,10 +198,16 @@ export function InstructorShell() {
   return (
     <div className="mx-auto min-h-app w-full max-w-md">
       <main className="px-5 pb-28 pt-8">
-        {tab === "home" && <HomeTab onResume={() => setTab("resume")} counts={counts} onApplications={() => setTab("applications")} />}
-        {tab === "jobs" && (
-          <JobsBrowser key={openJobId ?? "list"} initialJobId={openJobId} onApply={setApplying} reloadKey={reloadKey} />
+        {tab === "home" && (
+          <HomeTab
+            onResume={() => setTab("resume")}
+            counts={counts}
+            countsError={my.error && !my.loading}
+            onRetryCounts={() => void my.reload()}
+            onApplications={() => setTab("applications")}
+          />
         )}
+        {tab === "jobs" && <JobsBrowser key={openJobId ?? "list"} initialJobId={openJobId} onApply={setApplying} reloadKey={reloadKey} />}
         {tab === "offers" && <ComingSoon title="제안" />}
         {tab === "applications" && (
           <MyApplications

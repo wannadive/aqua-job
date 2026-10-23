@@ -206,15 +206,15 @@ export function applicationGroup(a: GroupInput): ApplicationGroup {
   return "closed";
 }
 
-/** 내 지원 숫자: 지원 중(applied) / 총 지원(취소 제외) / 선택됨 */
-export function myApplicationCounts(rows: { status: string }[]): { active: number; total: number; selected: number } {
+/** 내 지원 숫자: 지원 중(지원함 탭과 같음: 지원했고 공고가 아직 진행중) / 총 지원(취소 제외) / 선택됨 */
+export function myApplicationCounts(rows: GroupInput[]): { active: number; total: number; selected: number } {
   let active = 0;
   let total = 0;
   let selected = 0;
   for (const r of rows) {
     if (r.status === "withdrawn") continue;
     total += 1;
-    if (r.status === "applied") active += 1;
+    if (applicationGroup(r) === "applied") active += 1;
     if (r.status === "selected") selected += 1;
   }
   return { active, total, selected };

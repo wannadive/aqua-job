@@ -105,6 +105,22 @@ export function ApplicantResume({ instructorId, name, onBack }: { instructorId: 
   const records = formatRecords(profile.records);
   const certs = profile.certifications.filter((c) => c.org || c.level).map((c) => [c.org, c.level].filter(Boolean).join(" "));
   const basics = [profile.gender, profile.ageBand].filter(Boolean).join(" · ");
+  const has = (v: unknown) => (Array.isArray(v) ? v.length > 0 : v != null && v !== "");
+  const showBasic =
+    has(profile.regions) ||
+    has(scopes) ||
+    has(profile.mbti) ||
+    has(profile.intro) ||
+    has(profile.teachingStyleTags) ||
+    has(profile.teachingStyleNote);
+  const showSpec = has(certs) || has(profile.instructorLevel) || records.length > 0;
+  const showCareer =
+    has(profile.instructorYears) ||
+    has(profile.studentsTaught) ||
+    has(profile.pastCenters) ||
+    has(profile.tourExperience) ||
+    has(profile.otherCerts) ||
+    has(profile.languages);
   const availability = [profile.availableDays.join("·"), profile.availableTime].filter((x) => x && x.length > 0).join(" ");
 
   return (
@@ -139,52 +155,58 @@ export function ApplicantResume({ instructorId, name, onBack }: { instructorId: 
         </Section>
       )}
 
-      <Section title="기본">
-        <dl className="space-y-2">
-          <Row label="활동 지역" value={profile.regions.join(", ")} />
-          <Row label="교육하는 곳" value={scopes.join(", ")} />
-          <Row label="MBTI" value={profile.mbti} />
-          <Row label="자기소개" value={profile.intro} self />
-        </dl>
-        {profile.teachingStyleTags.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {profile.teachingStyleTags.map((t) => (
-              <span key={t} className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink">
-                {t}
-              </span>
-            ))}
-          </div>
-        )}
-        {profile.teachingStyleNote && <p className="mt-2 whitespace-pre-wrap text-sm text-ink">{profile.teachingStyleNote}</p>}
-      </Section>
+      {showBasic && (
+        <Section title="기본">
+          <dl className="space-y-2">
+            <Row label="활동 지역" value={profile.regions.join(", ")} />
+            <Row label="교육하는 곳" value={scopes.join(", ")} />
+            <Row label="MBTI" value={profile.mbti} />
+            <Row label="자기소개" value={profile.intro} self />
+          </dl>
+          {profile.teachingStyleTags.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {profile.teachingStyleTags.map((t) => (
+                <span key={t} className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink">
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
+          {profile.teachingStyleNote && <p className="mt-2 whitespace-pre-wrap text-sm text-ink">{profile.teachingStyleNote}</p>}
+        </Section>
+      )}
 
-      <Section title="프리다이빙 스펙" self>
-        <dl className="space-y-2">
-          <Row label="자격 단체·등급" value={certs.join(", ")} />
-          <Row label="강사 등급" value={profile.instructorLevel} />
-        </dl>
-        {records.length > 0 && (
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            {records.map((r) => (
-              <div key={r.label} className="rounded-xl bg-surface px-3 py-2">
-                <div className="text-xs text-muted">{r.label}</div>
-                <div className="text-base font-bold text-ink">{r.value}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Section>
+      {showSpec && (
+        <Section title="프리다이빙 스펙" self>
+          <dl className="space-y-2">
+            <Row label="자격 단체·등급" value={certs.join(", ")} />
+            <Row label="강사 등급" value={profile.instructorLevel} />
+          </dl>
+          {records.length > 0 && (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {records.map((r) => (
+                <div key={r.label} className="rounded-xl bg-surface px-3 py-2">
+                  <div className="text-xs text-muted">{r.label}</div>
+                  <div className="text-base font-bold text-ink">{r.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+      )}
 
-      <Section title="경력" self>
-        <dl className="space-y-2">
-          <Row label="강사 경력" value={profile.instructorYears != null ? `${profile.instructorYears}년` : null} />
-          <Row label="가르친 교육생" value={profile.studentsTaught != null ? `${profile.studentsTaught}명` : null} />
-          <Row label="활동한 센터" value={profile.pastCenters.join(", ")} />
-          <Row label="투어 경험" value={profile.tourExperience} />
-          <Row label="그 밖의 자격" value={profile.otherCerts.join(", ")} />
-          <Row label="언어" value={profile.languages.join(", ")} />
-        </dl>
-      </Section>
+      {showCareer && (
+        <Section title="경력" self>
+          <dl className="space-y-2">
+            <Row label="강사 경력" value={profile.instructorYears != null ? `${profile.instructorYears}년` : null} />
+            <Row label="가르친 교육생" value={profile.studentsTaught != null ? `${profile.studentsTaught}명` : null} />
+            <Row label="활동한 센터" value={profile.pastCenters.join(", ")} />
+            <Row label="투어 경험" value={profile.tourExperience} />
+            <Row label="그 밖의 자격" value={profile.otherCerts.join(", ")} />
+            <Row label="언어" value={profile.languages.join(", ")} />
+          </dl>
+        </Section>
+      )}
 
       <Section title="가능 조건">
         <dl className="space-y-2">

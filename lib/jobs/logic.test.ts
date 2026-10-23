@@ -211,7 +211,23 @@ test("applicationGroup: 선택됨·취소함·지원함·마감/미선택", () =
 });
 
 test("myApplicationCounts: 취소 제외, 지원 중·선택 따로", () => {
-  const r = myApplicationCounts([{ status: "applied" }, { status: "selected" }, { status: "withdrawn" }, { status: "not_selected" }]);
+  const open = { status: "open" as const };
+  const r = myApplicationCounts([
+    { status: "applied", job: open },
+    { status: "selected", job: open },
+    { status: "withdrawn", job: open },
+    { status: "not_selected", job: open },
+  ]);
   assert.deepEqual(r, { active: 1, total: 3, selected: 1 });
   assert.deepEqual(myApplicationCounts([]), { active: 0, total: 0, selected: 0 });
+});
+
+test("myApplicationCounts: 지원 중 = 지원함 탭(공고가 닫혔거나 내려간 지원은 제외)", () => {
+  const r = myApplicationCounts([
+    { status: "applied", job: { status: "open" } },
+    { status: "applied", job: { status: "expired" } },
+    { status: "applied", job: { status: "full" } },
+    { status: "applied", job: null },
+  ]);
+  assert.deepEqual(r, { active: 1, total: 4, selected: 0 });
 });

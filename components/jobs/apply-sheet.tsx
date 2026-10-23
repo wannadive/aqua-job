@@ -61,15 +61,24 @@ export function ApplySheet({
     setBusy(true);
     const res = await applyToJob(job.id, message);
     if (res.error) {
+      // 이미 마감·지원됨 등으로 바뀌었을 수 있다: 상태를 다시 불러오고 시트를 닫는다
       toast.error(res.error);
-      submitting.current = false;
-      setBusy(false);
+      try {
+        await onApplied();
+      } finally {
+        submitting.current = false;
+        setBusy(false);
+        onClose();
+      }
       return;
     }
     toast.success("지원했어요");
-    // 성공하면 닫힐 때까지 busy 유지(이중 제출 방지)
-    await onApplied();
-    onClose();
+    // 성공하면 닫힐 때까지 busy 유지(이중 제출 방지). 새로 불러오다 실패해도 시트는 닫는다.
+    try {
+      await onApplied();
+    } finally {
+      onClose();
+    }
   };
 
   const dates = job ? formatJobDates(job) : "";

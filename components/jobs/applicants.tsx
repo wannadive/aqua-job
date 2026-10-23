@@ -93,7 +93,10 @@ export function Applicants({
     try {
       const res = await selectApplicant(target.id);
       if (res.error) {
+        // 이미 마감·취소 등으로 바뀌었을 수 있다: 창을 닫고 목록·숫자를 다시 불러온다
         toast.error(res.error);
+        setSelecting(null);
+        await Promise.all([reload(), onChanged()]);
         return;
       }
       setSelecting(null);
@@ -182,7 +185,10 @@ export function Applicants({
                   <Button
                     variant="outline"
                     className={`h-11 border-line text-base ${selectable || a.status === "selected" ? "" : "col-span-2"}`}
-                    onClick={() => setResumeOf(a)}
+                    onClick={() => {
+                      setContactOpen(new Set());
+                      setResumeOf(a);
+                    }}
                   >
                     이력서 보기
                   </Button>
