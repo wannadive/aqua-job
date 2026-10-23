@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CenterPublicProfileView } from "@/components/centers/center-public-profile";
@@ -15,8 +15,10 @@ function useViewer(): { viewer: JobViewer; loading: boolean } {
   return { viewer: { userId: user?.id ?? null, roles: user?.roles ?? [] }, loading: isLoading };
 }
 
-/** 공유 링크용 공개 틀: 앱 셸·로그인 없이 열린다. 상단에 브랜드 + 로그인/가입 링크만. */
-function PublicFrame({ children }: { children: (v: JobViewer) => ReactNode }) {
+const ViewerContext = createContext<JobViewer>({ userId: null, roles: [] });
+
+/** 공유 링크용 공개 틀: 앱 셸·로그인 없이 열린다. 상단에 브랜드 + 로그인/가입 링크만. 라우트 그룹 레이아웃이라 페이지를 옮겨도 다시 만들어지지 않는다. */
+function PublicFrame({ children }: { children: ReactNode }) {
   const { viewer, loading } = useViewer();
   return (
     <div className="mx-auto min-h-app w-full max-w-md">
@@ -25,29 +27,33 @@ function PublicFrame({ children }: { children: (v: JobViewer) => ReactNode }) {
           {BRAND.appName}
         </Link>
         {!viewer.userId && !loading && (
-          <nav className="flex items-center gap-4 text-sm font-semibold">
-            <Link href="/" className="text-muted">
+          <nav className="flex items-center gap-2 text-sm font-semibold">
+            <Link href="/?auth=login" className="flex h-11 items-center px-3 text-muted">
               로그인
             </Link>
-            <Link href="/" className="rounded-full bg-ink px-4 py-2 text-white">
+            <Link href="/?auth=signup" className="flex h-11 items-center rounded-full bg-ink px-5 text-white">
               가입
             </Link>
           </nav>
         )}
         {viewer.userId && (
-          <Link href="/" className="text-sm font-semibold text-muted">
+          <Link href="/" className="flex h-11 items-center px-2 text-sm font-semibold text-muted">
             내 화면
           </Link>
         )}
       </header>
       <main className="px-5 pb-16 pt-4">
-        {loading ? <p className="py-8 text-center text-sm text-muted">불러오는 중…</p> : children(viewer)}
+        {loading ? (
+          <p className="py-8 text-center text-sm text-muted">불러오는 중…</p>
+        ) : (
+          <ViewerContext.Provider value={viewer}>{children}</ViewerContext.Provider>
+        )}
       </main>
     </div>
   );
 }
 
-function PublicRoot({ children }: { children: (v: JobViewer) => ReactNode }) {
+export function PublicShell({ children }: { children: ReactNode }) {
   return (
     <SupabaseAuthProvider>
       <PublicFrame>{children}</PublicFrame>
@@ -55,47 +61,39 @@ function PublicRoot({ children }: { children: (v: JobViewer) => ReactNode }) {
   );
 }
 
+const SIGNUP = "/?auth=signup";
+
 export function PublicJobsPage() {
   const router = useRouter();
-  return (
-    <PublicRoot>
-      {() => <JobList onOpenJob={(j) => router.push(`/jobs/${j.id}`)} />}
-    </PublicRoot>
-  );
+  return <JobList onOpenJob={(j) => router.push(`/jobs/${j.id}`)} />;
 }
 
 export function PublicJobPage({ id }: { id: string }) {
   const router = useRouter();
+  const viewer = useContext(ViewerContext);
   return (
-    <PublicRoot>
-      {(viewer) => (
-        <JobDetail
-          jobId={id}
-          viewer={viewer}
-          onBack={() => router.push("/jobs")}
-          onOpenCenter={(cid) => router.push(`/centers/${cid}`)}
-          onSignup={() => router.push("/")}
-          onApply={() => router.push("/")}
-        />
-      )}
-    </PublicRoot>
+    <JobDetail
+      jobId={id}
+      viewer={viewer}
+      onBack={() => router.push("/jobs")}
+      onOpenCenter={(cid) => router.push(`/centers/${cid}`)}
+      onSignup={() => router.push(SIGNUP)}
+      onApply={() => router.push("/")}
+    />
   );
 }
 
 export function PublicCenterPage({ id }: { id: string }) {
   const router = useRouter();
+  const viewer = useContext(ViewerContext);
   return (
-    <PublicRoot>
-      {(viewer) => (
-        <CenterPublicProfileView
-          centerId={id}
-          loggedIn={!!viewer.userId}
-          onBack={() => router.push("/jobs")}
-          onOpenJob={(jid) => router.push(`/jobs/${jid}`)}
-          onSignup={() => router.push("/")}
-        />
-      )}
-    </PublicRoot>
+    <CenterPublicProfileView
+      centerId={id}
+      loggedIn={!!viewer.userId}
+      onBack={() => router.push("/jobs")}
+      onOpenJob={(jid) => router.push(`/jobs/${jid}`)}
+      onSignup={() => router.push(SIGNUP)}
+    />
   );
 }
 

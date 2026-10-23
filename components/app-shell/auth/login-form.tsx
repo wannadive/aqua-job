@@ -54,7 +54,7 @@ export function LoginForm({ onSignup, isAdminEntry }: { onSignup?: () => void; i
           </Button>
         </form>
         {!isAdminEntry && (
-          <a href="/jobs" className="mt-2 block w-full py-2 text-center text-sm font-medium text-muted underline">
+          <a href="/jobs" className="mt-2 flex min-h-11 w-full items-center justify-center text-center text-sm font-medium text-muted underline">
             공고 둘러보기
           </a>
         )}

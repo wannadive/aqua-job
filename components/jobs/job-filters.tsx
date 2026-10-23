@@ -31,7 +31,7 @@ export function JobFilters({ value, onChange }: { value: JobFilterState; onChang
               type="button"
               aria-pressed={on}
               onClick={() => onChange({ ...value, type: c.key })}
-              className={`h-10 rounded-full px-4 text-sm font-semibold ${on ? "bg-ink text-white" : "bg-white text-ink shadow-sm"}`}
+              className={`h-11 rounded-full px-5 text-sm font-semibold ${on ? "bg-ink text-white" : "bg-white text-ink shadow-sm"}`}
             >
               {c.label}
             </button>
@@ -43,7 +43,7 @@ export function JobFilters({ value, onChange }: { value: JobFilterState; onChang
           aria-label="지역"
           value={value.region ?? ""}
           onChange={(e) => onChange({ ...value, region: e.target.value || null })}
-          className="h-10 rounded-xl border border-line bg-white px-3 text-sm text-ink"
+          className="h-11 rounded-xl border border-line bg-white px-3 text-sm text-ink"
         >
           <option value="">전체 지역</option>
           {REGION_OPTIONS.map((r) => (
@@ -52,7 +52,7 @@ export function JobFilters({ value, onChange }: { value: JobFilterState; onChang
             </option>
           ))}
         </select>
-        <label className="flex min-h-10 cursor-pointer items-center gap-2 text-sm text-ink">
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"
             checked={value.paidOnly}

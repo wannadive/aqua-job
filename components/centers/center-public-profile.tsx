@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { JOB_STATUS_LABEL } from "@/components/jobs/job-card";
 import { avatarUrl } from "@/lib/avatar/api";
-import { getCenterPublicProfile, getPublicFacts, listCenterJobHistory } from "@/lib/jobs/api";
+import { fetchPaidMode, getCenterPublicProfile, getPublicFacts, listCenterJobHistory } from "@/lib/jobs/api";
 import { JOB_TYPES } from "@/lib/jobs/config";
 import { formatMdKst, formatPay } from "@/lib/jobs/logic";
 import type { CenterJobHistoryItem, CenterPublicProfile } from "@/lib/jobs/types";
@@ -40,6 +40,7 @@ export function CenterPublicProfileView({
   const [facts, setFacts] = useState<PublicFact[]>([]);
   const [history, setHistory] = useState<CenterJobHistoryItem[]>([]);
   const [error, setError] = useState(false);
+  const [paidMode, setPaidMode] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -48,6 +49,7 @@ export function CenterPublicProfileView({
     setError(false);
     (async () => {
       try {
+        if (loggedIn) setPaidMode(await fetchPaidMode().catch(() => false));
         const p = await getCenterPublicProfile(centerId);
         if (cancelled) return;
         setProfile(p);
@@ -64,7 +66,7 @@ export function CenterPublicProfileView({
     return () => {
       cancelled = true;
     };
-  }, [centerId, attempt]);
+  }, [centerId, attempt, loggedIn]);
 
   const back = onBack && (
     <button type="button" onClick={onBack} className="-ml-2 flex h-11 items-center gap-1 px-2 text-sm font-semibold text-ink">
@@ -151,7 +153,7 @@ export function CenterPublicProfileView({
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-base font-bold text-ink">센터 상세</h2>
             {loggedIn ? (
-              <span className="rounded-full bg-warn-bg px-3 py-1.5 text-xs font-semibold text-warn">구독하고 보기</span>
+              paidMode && <span className="rounded-full bg-warn-bg px-3 py-1.5 text-xs font-semibold text-warn">구독하고 보기</span>
             ) : (
               <button type="button" onClick={onSignup} className="rounded-full bg-warn-bg px-3 py-1.5 text-xs font-semibold text-warn">
                 가입하고 보기
@@ -162,6 +164,7 @@ export function CenterPublicProfileView({
             <div className="h-3 w-[90%] rounded-full bg-surface" />
             <div className="h-3 w-[70%] rounded-full bg-surface" />
           </div>
+          {loggedIn && !paidMode && <p className="mt-3 text-xs text-muted">지금 이 계정으로는 상세를 볼 수 없어요</p>}
         </section>
       )}
 

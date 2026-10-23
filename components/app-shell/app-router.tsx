@@ -51,6 +51,16 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
 
   useEffect(() => {
     setIntroSeen(readIntroSeen());
+    // 공유 링크에서 온 /?auth=login | signup 은 도입부 없이 해당 화면으로(두 값만 허용)
+    try {
+      const a = new URLSearchParams(window.location.search).get("auth");
+      if (a === "login" || a === "signup") {
+        setIntroSeen(true);
+        setAuthView(a === "signup" ? "signup-select" : "login");
+      }
+    } catch {
+      /* ignore */
+    }
     setReady(true);
   }, []);
 

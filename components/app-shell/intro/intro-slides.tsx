@@ -90,7 +90,7 @@ export function IntroSlides({ onFinish }: { onFinish: (choice: IntroChoice) => v
           <button type="button" onClick={() => onFinish("signup")} className="py-1 text-sm font-semibold text-accent">
             {INTRO_FINAL.signupLink}
           </button>
-          <a href="/jobs" className="mt-3 py-1 text-sm font-semibold text-ink underline">
+          <a href="/jobs" className="mt-3 flex min-h-11 items-center px-3 text-sm font-semibold text-ink underline">
             공고 둘러보기
           </a>
           <p className="mt-3 text-xs text-muted">

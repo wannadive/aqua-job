@@ -12,11 +12,11 @@ export function LockedField({
 }: {
   label: string;
   /** `가입하고 보기` | `구독하고 보기` */
-  tag: string;
+  tag: string | null;
   onAction?: () => void;
   lines?: number;
 }) {
-  const tagEl: ReactNode = onAction ? (
+  const tagEl: ReactNode = !tag ? null : onAction ? (
     <button type="button" onClick={onAction} className="rounded-full bg-warn-bg px-3 py-1.5 text-xs font-semibold text-warn">
       {tag}
     </button>

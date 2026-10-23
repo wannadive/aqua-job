@@ -76,6 +76,7 @@ export function JobDetail({
   const [locked, setLocked] = useState(true);
   const [paidMode, setPaidMode] = useState(false);
   const [error, setError] = useState(false);
+  const [detailError, setDetailError] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [appStatus, setAppStatus] = useState<ApplicationStatus | null>(null);
   const viewedRef = useRef<string | null>(null);
@@ -87,6 +88,7 @@ export function JobDetail({
     setDetail(null);
     setLocked(true);
     setError(false);
+    setDetailError(false);
     (async () => {
       try {
         const s = await getJobSummary(jobId);
@@ -98,11 +100,18 @@ export function JobDetail({
           void recordJobView(jobId);
         }
         if (!viewer.userId) return;
-        const [d, paid] = await Promise.all([tryGetJobDetail(jobId), fetchPaidMode().catch(() => false)]);
+        const paid = await fetchPaidMode().catch(() => false);
         if (cancelled) return;
         setPaidMode(paid);
-        setLocked(d.locked || !d.detail);
-        setDetail(d.detail);
+        try {
+          const d = await tryGetJobDetail(jobId);
+          if (cancelled) return;
+          setLocked(d.locked || !d.detail);
+          setDetail(d.detail);
+        } catch {
+          // 요약은 그대로 두고 상세 자리에서만 오류를 보여 준다
+          if (!cancelled) setDetailError(true);
+        }
       } catch {
         if (!cancelled) setError(true);
       }
@@ -162,7 +171,8 @@ export function JobDetail({
     );
   }
 
-  const lockTag = viewer.userId ? "구독하고 보기" : "가입하고 보기";
+  // 구독 꼬리표는 로그인 + 유료 전환 후에만. 무료 기간에 잠겼다면 꼬리표 없이 안내만.
+  const lockTag = !viewer.userId ? "가입하고 보기" : paidMode ? "구독하고 보기" : null;
   const lockAction = viewer.userId ? undefined : onSignup;
   const photos = (detail?.center.photoPaths ?? []).map((p) => avatarUrl(p)).filter((u): u is string => !!u);
   const open = summary.status === "open";
@@ -243,7 +253,16 @@ export function JobDetail({
         <>
           <LockedField label="상세 설명" tag={lockTag} onAction={lockAction} />
           <LockedField label="센터 정보" tag={lockTag} onAction={lockAction} lines={4} />
-          {viewer.userId && !paidMode && <p className="text-center text-xs text-muted">지금은 이 공고의 상세를 볼 수 없어요</p>}
+          {detailError ? (
+            <p className="text-center text-sm text-muted">
+              상세를 불러오지 못했어요
+              <button type="button" onClick={() => setAttempt((n) => n + 1)} className="ml-3 font-semibold text-ink underline">
+                다시 시도
+              </button>
+            </p>
+          ) : (
+            viewer.userId && !paidMode && <p className="text-center text-xs text-muted">지금 이 계정으로는 상세를 볼 수 없어요</p>
+          )}
         </>
       )}
 
