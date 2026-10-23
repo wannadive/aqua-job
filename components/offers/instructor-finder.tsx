@@ -131,7 +131,10 @@ export function InstructorFinder({
   reloadJobs,
   onNewJob,
   onApplicants,
+  viewerId = null,
 }: {
+  /** 지금 로그인한 (활성) 회원 id — 이력서 [신고하기]에만 쓴다 */
+  viewerId?: string | null;
   jobs: JobSummary[];
   jobsLoading: boolean;
   jobsError: boolean;
@@ -236,6 +239,7 @@ export function InstructorFinder({
           instructorId={resumeOf.id}
           name={resumeOf.name}
           onBack={() => setResumeOf(null)}
+          reporterId={viewerId}
           actions={
             <>
               {offersNote}

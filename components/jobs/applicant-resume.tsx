@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { ChevronLeft } from "lucide-react";
+import { ReportButton } from "@/components/moderation/report-button";
 import { avatarUrl } from "@/lib/avatar/api";
 import { getPublicFacts } from "@/lib/jobs/api";
 import { fetchTalentProfile } from "@/lib/talent-profile/api";
@@ -48,12 +49,15 @@ export function ApplicantResume({
   name,
   onBack,
   actions,
+  reporterId = null,
 }: {
   instructorId: string;
   name: string;
   onBack: () => void;
   /** 이력서를 읽었을 때만 맨 아래에 보이는 버튼 영역(예: 강사 찾기의 [공고 골라서 제안하기]) */
   actions?: ReactNode;
+  /** 신고할 수 있는 사람(로그인한 활성 회원)의 id. null이면 [신고하기]를 그리지 않는다. 본인 이력서에는 없다 */
+  reporterId?: string | null;
 }) {
   const [profile, setProfile] = useState<InstructorProfile | null | undefined>(undefined);
   const [facts, setFacts] = useState<PublicFact[]>([]);
@@ -229,6 +233,13 @@ export function ApplicantResume({
       </Section>
 
       {actions}
+
+      {/* 신고: 이력서를 읽었을 때만, 본인 아님. 서버(submit_report)가 볼 수 있는 대상인지 다시 확인한다 */}
+      {reporterId && reporterId !== instructorId && (
+        <div className="flex justify-center">
+          <ReportButton target={{ type: "profile", id: instructorId, label: name }} />
+        </div>
+      )}
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, Share2 } from "lucide-react";
 import { toast } from "sonner";
+import { ReportButton } from "@/components/moderation/report-button";
 import { Button } from "@/components/ui/button";
 import { avatarUrl } from "@/lib/avatar/api";
 import { fetchPaidMode, getJobSummary, getMyApplicationStatus, recordJobView, tryGetJobDetail } from "@/lib/jobs/api";
@@ -269,6 +270,13 @@ export function JobDetail({
       {applyArea}
 
       <p className="px-1 text-xs leading-relaxed text-muted">{jobDisclaimer(summary.centerName)}</p>
+
+      {/* 신고: 로그인한 활성 회원 · 내 공고 아님(ownerId는 주인·관리자에게만 온다). 서버가 다시 확인한다 */}
+      {viewer.userId && viewer.active === true && summary.ownerId !== viewer.userId && (
+        <div className="flex justify-center">
+          <ReportButton target={{ type: "job", id: summary.id, label: summary.title }} />
+        </div>
+      )}
     </div>
   );
 }

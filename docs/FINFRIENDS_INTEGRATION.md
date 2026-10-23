@@ -75,6 +75,11 @@ lib/notifications/ + components/notifications/     앱 안 알림(종·목록·�
                                                    합칠 때 WD notifications·push_*와 병합(4절) — 셸은 NotificationsProvider·NotificationBar·
                                                    NotificationPanel만 끼우고, 이동은 셸이 onOpenLink로 받는다
 lib/offers/ + components/offers/                   강사 둘러보기·제안(보내기·철회·수락/거절) — 연락처 카드는 components/jobs/applicant-contact 공용
+lib/moderation/ + components/moderation/           신고하기(report-button: 공고 상세·센터 프로필·강사 이력서) · 관리자 신고 탭(admin-reports)
+                                                   · 조치 확인 창(action-dialog: 공고 숨김·정지·퇴출·다시 활성, resolve-dialog: 처리 완료·기각)
+                                                   · 회원 탭 조치 버튼(member-actions) · 차단 화면 사유(blocked-notice — 내 계정 알림 본문에서 읽음).
+                                                   쓰기는 011 RPC만. 셸은 AdminReports·MemberActions·BlockedNotice만 끼우고
+                                                   현재 회원 id·활성 여부·로그아웃은 props로 넘긴다(JobViewer.active, reporterId, viewerId)
 ```
 
 ### 공용 — 위치 유지 (WD와 같은 경로)

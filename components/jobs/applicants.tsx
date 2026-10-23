@@ -39,7 +39,10 @@ export function Applicants({
   offersLoading = false,
   onRetryOffers,
   focusApp = null,
+  viewerId = null,
 }: {
+  /** 지금 로그인한 (활성) 회원 id — 이력서 [신고하기]에만 쓴다 */
+  viewerId?: string | null;
   jobs: JobSummary[];
   /** 알림에서 온 지원(새 지원자) — 강조 */
   focusApp?: FocusRequest | null;
@@ -142,7 +145,9 @@ export function Applicants({
 
   if (resumeOf) {
     return (
-      <ApplicantResume instructorId={resumeOf.instructorId} name={resumeOf.applicantName ?? "지원자"} onBack={() => setResumeOf(null)} />
+      <ApplicantResume instructorId={resumeOf.instructorId} name={resumeOf.applicantName ?? "지원자"} onBack={() => setResumeOf(null)}
+        reporterId={viewerId}
+      />
     );
   }
 

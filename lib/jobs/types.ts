@@ -151,4 +151,6 @@ export interface JobViewer {
   /** 비로그인이면 null */
   userId: string | null;
   roles: string[];
+  /** 활성 계정인지(정지·퇴출이면 false). 신고하기 버튼은 true일 때만 — 최종 판단은 서버(submit_report) */
+  active?: boolean;
 }

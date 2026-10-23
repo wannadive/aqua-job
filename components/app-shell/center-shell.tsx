@@ -174,6 +174,7 @@ export function CenterShell({
   /** 공고 작성·수정 화면이 열리고 닫힐 때 */
   onFullScreenFormChange?: (open: boolean) => void;
 } = {}) {
+  const { user } = useAuth();
   const [tab, setTab] = useState<Tab>("home");
   const [overlay, setOverlay] = useState<Overlay>(null);
   // 지원자 탭의 공고 필터(null = 전체). 공고 카드 [지원자 보기]는 그 공고로 연다.
@@ -319,6 +320,7 @@ export function CenterShell({
             offersError={sent.error && !my.loading && !my.error}
             offersLoading={sent.loading}
             onRetryOffers={() => void sent.reload()}
+            viewerId={user?.accountStatus === "active" ? user.id : null}
           />
         )}
         {tab === "instructors" && (
@@ -333,6 +335,7 @@ export function CenterShell({
             reloadOffers={reloadOffers}
             reloadJobs={reloadJobs}
             onNewJob={() => setOverlay({ kind: "new" })}
+            viewerId={user?.accountStatus === "active" ? user.id : null}
             onApplicants={(jobId) => {
               setApplicantJob(jobId);
               setTab("applicants");

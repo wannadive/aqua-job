@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { JOB_STATUS_LABEL } from "@/components/jobs/job-card";
+import { ReportButton } from "@/components/moderation/report-button";
 import { avatarUrl } from "@/lib/avatar/api";
 import { fetchPaidMode, getCenterPublicFacts, getCenterPublicProfile, listCenterJobHistory } from "@/lib/jobs/api";
 import { JOB_TYPES } from "@/lib/jobs/config";
@@ -29,12 +30,15 @@ export function CenterPublicProfileView({
   onOpenJob,
   onSignup,
   loggedIn,
+  reporterId = null,
 }: {
   centerId: string;
   onBack?: () => void;
   onOpenJob?: (jobId: string) => void;
   onSignup: () => void;
   loggedIn: boolean;
+  /** 신고할 수 있는 사람(로그인한 활성 회원)의 id. null이면 [신고하기]를 그리지 않는다 */
+  reporterId?: string | null;
 }) {
   const [profile, setProfile] = useState<CenterPublicProfile | null | undefined>(undefined);
   const [facts, setFacts] = useState<PublicFact[]>([]);
@@ -199,6 +203,13 @@ export function CenterPublicProfileView({
           </ul>
         )}
       </section>
+
+      {/* 신고: 내 센터가 아닐 때만(profile.userId는 주인·관리자에게만 온다). 서버가 다시 확인한다 */}
+      {reporterId && profile.userId !== reporterId && (
+        <div className="flex justify-center">
+          <ReportButton target={{ type: "center", id: profile.centerId || centerId, label: profile.centerName }} />
+        </div>
+      )}
     </div>
   );
 }
