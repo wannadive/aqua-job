@@ -9,19 +9,23 @@ Supabase 대시보드 → **SQL Editor**에서 아래 순서로 실행한다.
 3. `supabase/migrations/20261022_003_multi_role.sql` — 한 계정 여러 역할(`profiles.roles`), 권한 확인을 roles로
 4. `supabase/migrations/20261023_004_pre_phase2.sql` — 2단계 전 정비: 회원 이름 노출 축소(`can_view_profile`), 유효 서류 규칙 하나로(`effective_doc`)
 5. `supabase/migrations/20261023_005_jobs.sql` — 2단계 공고: 공고·지원·선택·조회수·유료 스위치(`app_settings.paid_mode`), 공개 요약 RPC, 연락처는 선택한 공고 주인에게만
+6. `supabase/migrations/20261024_006_merge_ready.sql` — 핀프렌즈 합류 대비: 테이블 이름 변경(`instructor_profiles`→`talent_profiles`, `documents`→`verification_documents`, `requirement_rules`→`verification_requirements`, `app_settings`→`aqua_settings`), 서류 버킷 `verification-docs`, `centers` 테이블·`job_posts.center_id`, 구독 권한 자리(`center_has_product`/`user_has_product`)
 
-각 파일 내용을 통째로 붙여 넣고 **Run**. 반드시 001 → 002 → 003 → 004 → 005 순서로 실행한다.
+각 파일 내용을 통째로 붙여 넣고 **Run**. 반드시 001 → 002 → 003 → 004 → 005 → 006 순서로 실행한다.
 여러 번 실행해도 괜찮다(이미 있는 테이블·정책은 건너뛰거나 다시 만든다).
 
-## 2. 보안 검사 (005까지 적용한 뒤)
+## 2. 보안 검사 (006까지 적용한 뒤)
+
+006에서 테이블 이름이 바뀌었으므로 아래 검사 파일들도 새 이름(`talent_profiles`, `verification_documents`, `verification_requirements`, `aqua_settings`, 버킷 `verification-docs`)으로 고쳐 두었다. **006을 적용하지 않은 DB에서는 1~5번 검사도 실패한다**(테이블이 없다는 오류).
 
 1. `supabase/test/phase1_checks.sql` → 성공하면 `phase1 ok`
 2. `supabase/test/phase1_hardening_checks.sql` → 성공하면 `hardening ok`
 3. `supabase/test/phase1_multirole_checks.sql` → 성공하면 `multirole ok`
 4. `supabase/test/phase2_pre_checks.sql` → 성공하면 `pre2 ok`
 5. `supabase/test/phase2_jobs_checks.sql` → 성공하면 `jobs ok`
+6. `supabase/test/phase2_merge_ready_checks.sql` → 성공하면 `merge ok`
 
-전체 순서: 001 → 002 → 003 → 004 → 005 → phase1_checks → phase1_hardening_checks → phase1_multirole_checks → phase2_pre_checks → phase2_jobs_checks
+전체 순서: 001 → 002 → 003 → 004 → 005 → 006 → phase1_checks → phase1_hardening_checks → phase1_multirole_checks → phase2_pre_checks → phase2_jobs_checks → phase2_merge_ready_checks
 
 각 파일 내용을 통째로 붙여 넣고 **Run**.
 
@@ -32,6 +36,7 @@ Supabase 대시보드 → **SQL Editor**에서 아래 순서로 실행한다.
 - 여러 역할 검사는 003이 적용되지 않았으면 실패한다(`roles` 컬럼이 없다는 오류).
 - 2단계 전 정비 검사는 004가 적용되지 않았으면 실패한다(예: `instructor_cannot_list_other_instructors 실패`).
 - 공고 검사는 005가 적용되지 않았으면 실패한다(`create_job_post` 함수가 없다는 오류).
+- 합류 대비 검사는 006이 적용되지 않았으면 실패한다(`renamed_tables_exist_old_gone 실패`).
 
 ## 3. 관리자 지정 (한 번만)
 
@@ -69,5 +74,5 @@ Task 4 가입 흐름 확인용으로 실제 프로젝트에 만든 가짜 계정
 | 강사 | test-instructor-1@aquajob.test | .env.local 의 TEST_ACCOUNT_PASSWORD |
 | 센터 | test-center-1@aquajob.test | .env.local 의 TEST_ACCOUNT_PASSWORD |
 
-- 강사는 `instructor_profiles` 행이 아직 없어 `onboardingDone=false` → 온보딩 화면으로 분기한다.
+- 강사는 `talent_profiles` 행이 아직 없어 `onboardingDone=false` → 온보딩 화면으로 분기한다.
 - 센터는 센터 홈으로 분기한다.

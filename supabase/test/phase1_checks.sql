@@ -86,7 +86,7 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
--- rls_documents_private: 센터C가 강사A의 documents·storage.objects를 select하면 0행
+-- rls_documents_private: 센터C가 강사A의 verification_documents·storage.objects를 select하면 0행
 -- ---------------------------------------------------------------------
 do $$
 declare
@@ -96,7 +96,7 @@ begin
   set local role authenticated;
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'a0000000-0000-4000-8000-00000000000a', 'role', 'authenticated')::text, true);
-  insert into public.documents (id, owner_id, doc_type, file_path, meta)
+  insert into public.verification_documents (id, owner_id, doc_type, file_path, meta)
   values ('d0000000-0000-4000-8000-0000000000a1', 'a0000000-0000-4000-8000-00000000000a',
           'instructor_cert', 'a0000000-0000-4000-8000-00000000000a/cert1.jpg',
           '{"org":"AIDA","grade":"강사"}');
@@ -104,34 +104,34 @@ begin
 
   -- 파일 원본 자리(Storage 메타데이터 행)
   insert into storage.objects (bucket_id, name, owner)
-  values ('documents', 'a0000000-0000-4000-8000-00000000000a/cert1.jpg',
+  values ('verification-docs', 'a0000000-0000-4000-8000-00000000000a/cert1.jpg',
           'a0000000-0000-4000-8000-00000000000a');
 
   set local role authenticated;
 
   -- 대조군: 강사A 본인은 서류 1행, 파일 1행
-  select count(*) into n from public.documents where owner_id = 'a0000000-0000-4000-8000-00000000000a';
+  select count(*) into n from public.verification_documents where owner_id = 'a0000000-0000-4000-8000-00000000000a';
   if n <> 1 then raise exception 'rls_documents_private 실패 (본인 서류 %행)', n; end if;
   select count(*) into n from storage.objects
-    where bucket_id = 'documents' and name like 'a0000000-0000-4000-8000-00000000000a/%';
+    where bucket_id = 'verification-docs' and name like 'a0000000-0000-4000-8000-00000000000a/%';
   if n <> 1 then raise exception 'rls_documents_private 실패 (본인 파일 %행)', n; end if;
 
   -- 센터C
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'a0000000-0000-4000-8000-00000000000c', 'role', 'authenticated')::text, true);
-  select count(*) into n from public.documents where owner_id = 'a0000000-0000-4000-8000-00000000000a';
+  select count(*) into n from public.verification_documents where owner_id = 'a0000000-0000-4000-8000-00000000000a';
   if n <> 0 then raise exception 'rls_documents_private 실패 (센터C가 서류 %행 봄)', n; end if;
   select count(*) into n from storage.objects
-    where bucket_id = 'documents' and name like 'a0000000-0000-4000-8000-00000000000a/%';
+    where bucket_id = 'verification-docs' and name like 'a0000000-0000-4000-8000-00000000000a/%';
   if n <> 0 then raise exception 'rls_documents_private 실패 (센터C가 파일 %행 봄)', n; end if;
 
   -- 대조군: 관리자는 서류·파일을 본다
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'a0000000-0000-4000-8000-00000000000d', 'role', 'authenticated')::text, true);
-  select count(*) into n from public.documents where owner_id = 'a0000000-0000-4000-8000-00000000000a';
+  select count(*) into n from public.verification_documents where owner_id = 'a0000000-0000-4000-8000-00000000000a';
   if n <> 1 then raise exception 'rls_documents_private 실패 (관리자 서류 %행)', n; end if;
   select count(*) into n from storage.objects
-    where bucket_id = 'documents' and name like 'a0000000-0000-4000-8000-00000000000a/%';
+    where bucket_id = 'verification-docs' and name like 'a0000000-0000-4000-8000-00000000000a/%';
   if n <> 1 then raise exception 'rls_documents_private 실패 (관리자 파일 %행)', n; end if;
 
   reset role;
@@ -155,7 +155,7 @@ begin
   end;
   reset role;
 
-  select status into v_status from public.documents where id = 'd0000000-0000-4000-8000-0000000000a1';
+  select status into v_status from public.verification_documents where id = 'd0000000-0000-4000-8000-0000000000a1';
   if not v_blocked or v_status <> 'submitted' then
     raise exception 'review_requires_admin 실패';
   end if;
@@ -177,22 +177,22 @@ begin
   reset role;
 
   -- 같은 트랜잭션 안이라 now()가 같으므로, 첫 제출 시각을 1시간 앞으로 옮겨 순서를 만든다
-  update public.documents set submitted_at = now() - interval '1 hour'
+  update public.verification_documents set submitted_at = now() - interval '1 hour'
   where id = 'd0000000-0000-4000-8000-0000000000a1';
 
   set local role authenticated;
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'a0000000-0000-4000-8000-00000000000a', 'role', 'authenticated')::text, true);
-  insert into public.documents (owner_id, doc_type, file_path)
+  insert into public.verification_documents (owner_id, doc_type, file_path)
   values ('a0000000-0000-4000-8000-00000000000a', 'instructor_cert',
           'a0000000-0000-4000-8000-00000000000a/cert2.jpg');
 
-  select count(*) into n from public.documents
+  select count(*) into n from public.verification_documents
     where owner_id = 'a0000000-0000-4000-8000-00000000000a' and doc_type = 'instructor_cert';
-  select status into v_latest from public.documents
+  select status into v_latest from public.verification_documents
     where owner_id = 'a0000000-0000-4000-8000-00000000000a' and doc_type = 'instructor_cert'
     order by submitted_at desc limit 1;
-  select status into v_first from public.documents where id = 'd0000000-0000-4000-8000-0000000000a1';
+  select status into v_first from public.verification_documents where id = 'd0000000-0000-4000-8000-0000000000a1';
   reset role;
 
   if n <> 2 or v_latest <> 'submitted' or v_first <> 'rejected' then
@@ -230,7 +230,7 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
--- banned_cannot_write: 강사A를 'banned'로 바꾸면 instructor_profiles update가 0행 또는 거부
+-- banned_cannot_write: 강사A를 'banned'로 바꾸면 talent_profiles update가 0행 또는 거부
 -- ---------------------------------------------------------------------
 do $$
 declare
@@ -241,8 +241,8 @@ begin
   set local role authenticated;
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'a0000000-0000-4000-8000-00000000000a', 'role', 'authenticated')::text, true);
-  insert into public.instructor_profiles (user_id, intro) values ('a0000000-0000-4000-8000-00000000000a', '처음 소개');
-  update public.instructor_profiles set intro = '고친 소개' where user_id = 'a0000000-0000-4000-8000-00000000000a';
+  insert into public.talent_profiles (user_id, intro) values ('a0000000-0000-4000-8000-00000000000a', '처음 소개');
+  update public.talent_profiles set intro = '고친 소개' where user_id = 'a0000000-0000-4000-8000-00000000000a';
   get diagnostics n = row_count;
   if n <> 1 then raise exception 'banned_cannot_write 실패 (활성 상태 수정 %행)', n; end if;
   reset role;
@@ -253,14 +253,14 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'a0000000-0000-4000-8000-00000000000a', 'role', 'authenticated')::text, true);
   begin
-    update public.instructor_profiles set intro = '퇴출 뒤 소개' where user_id = 'a0000000-0000-4000-8000-00000000000a';
+    update public.talent_profiles set intro = '퇴출 뒤 소개' where user_id = 'a0000000-0000-4000-8000-00000000000a';
     get diagnostics n = row_count;
   exception when insufficient_privilege then
     n := 0;
   end;
   reset role;
 
-  select intro into v_intro from public.instructor_profiles where user_id = 'a0000000-0000-4000-8000-00000000000a';
+  select intro into v_intro from public.talent_profiles where user_id = 'a0000000-0000-4000-8000-00000000000a';
   if n <> 0 or v_intro <> '고친 소개' then
     raise exception 'banned_cannot_write 실패 (수정 %행, 소개 %)', n, v_intro;
   end if;
@@ -310,7 +310,7 @@ begin
   set local role authenticated;
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'a0000000-0000-4000-8000-00000000000c', 'role', 'authenticated')::text, true);
-  insert into public.documents (id, owner_id, doc_type, file_path) values
+  insert into public.verification_documents (id, owner_id, doc_type, file_path) values
     ('d0000000-0000-4000-8000-0000000000c1', 'a0000000-0000-4000-8000-00000000000c',
      'business_registration', 'a0000000-0000-4000-8000-00000000000c/biz.jpg'),
     ('d0000000-0000-4000-8000-0000000000c2', 'a0000000-0000-4000-8000-00000000000c',
@@ -373,7 +373,7 @@ begin
   set local role authenticated;
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'a0000000-0000-4000-8000-00000000000c', 'role', 'authenticated')::text, true);
-  insert into public.documents (id, owner_id, doc_type, file_path)
+  insert into public.verification_documents (id, owner_id, doc_type, file_path)
   values ('d0000000-0000-4000-8000-0000000000c3', 'a0000000-0000-4000-8000-00000000000c',
           'representative_id', 'a0000000-0000-4000-8000-00000000000c/rep-id.jpg');
 
@@ -382,7 +382,7 @@ begin
   perform public.review_document('d0000000-0000-4000-8000-0000000000c3', 'verified', null, null);
   reset role;
 
-  select file_path into v_path from public.documents where id = 'd0000000-0000-4000-8000-0000000000c3';
+  select file_path into v_path from public.verification_documents where id = 'd0000000-0000-4000-8000-0000000000c3';
   if v_path is distinct from 'a0000000-0000-4000-8000-00000000000c/rep-id.jpg' then
     raise exception 'id_original_kept_for_purge 실패 (file_path %)', v_path;
   end if;
@@ -399,7 +399,7 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'a0000000-0000-4000-8000-00000000000b', 'role', 'authenticated')::text, true);
   begin
-    insert into public.documents (owner_id, doc_type, file_path, submitted_at)
+    insert into public.verification_documents (owner_id, doc_type, file_path, submitted_at)
     values ('a0000000-0000-4000-8000-00000000000b', 'first_aid',
             'a0000000-0000-4000-8000-00000000000b/cpr.jpg', now() + interval '1 day');
   exception when insufficient_privilege then

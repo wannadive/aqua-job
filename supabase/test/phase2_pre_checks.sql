@@ -40,7 +40,7 @@ values
 update public.profiles set role = 'admin' where id = 'e2000000-0000-4000-8000-0000000000d1';
 
 -- 강사 프로필: P는 공개, Q는 비공개, R은 아직 없음(postgres라 RLS를 거치지 않고 넣는다)
-insert into public.instructor_profiles (user_id, is_public) values
+insert into public.talent_profiles (user_id, is_public) values
   ('e2000000-0000-4000-8000-0000000000a1', true),
   ('e2000000-0000-4000-8000-0000000000a2', false);
 
@@ -157,7 +157,7 @@ begin
   set local role authenticated;
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'e2000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
-  insert into public.documents (id, owner_id, doc_type, file_path)
+  insert into public.verification_documents (id, owner_id, doc_type, file_path)
   values ('d2000000-0000-4000-8000-0000000000b1', 'e2000000-0000-4000-8000-0000000000c1',
           'business_registration', 'e2000000-0000-4000-8000-0000000000c1/biz1.jpg');
 
@@ -167,7 +167,7 @@ begin
   reset role;
 
   -- 같은 트랜잭션 안이라 now()가 같으므로, 첫 서류를 하루 앞으로 옮겨 순서를 만든다
-  update public.documents
+  update public.verification_documents
     set submitted_at = now() - interval '1 day', verified_at = now() - interval '1 day'
   where id = 'd2000000-0000-4000-8000-0000000000b1';
 
@@ -178,7 +178,7 @@ begin
   if not v_ok then raise exception 'has_requirements_uses_latest_verified 실패 (확인 후 false)'; end if;
 
   -- 새 사업자등록증 제출(대기 중)
-  insert into public.documents (id, owner_id, doc_type, file_path)
+  insert into public.verification_documents (id, owner_id, doc_type, file_path)
   values ('d2000000-0000-4000-8000-0000000000b2', 'e2000000-0000-4000-8000-0000000000c1',
           'business_registration', 'e2000000-0000-4000-8000-0000000000c1/biz2.jpg');
   v_ok := public.has_requirements('e2000000-0000-4000-8000-0000000000c1', 'post_lesson');
@@ -195,7 +195,7 @@ begin
   if not v_ok then raise exception 'has_requirements_uses_latest_verified 실패 (새 서류 반려 후 false)'; end if;
 
   -- 유효기간 있는 서류(대표강사 자격증)
-  insert into public.documents (id, owner_id, doc_type, file_path)
+  insert into public.verification_documents (id, owner_id, doc_type, file_path)
   values ('d2000000-0000-4000-8000-0000000000b3', 'e2000000-0000-4000-8000-0000000000c1',
           'rep_instructor_cert', 'e2000000-0000-4000-8000-0000000000c1/rep-cert.jpg');
   perform set_config('request.jwt.claims',
@@ -203,10 +203,10 @@ begin
   perform public.review_document('d2000000-0000-4000-8000-0000000000b3', 'verified', date '2099-12-31', null);
   reset role;
 
-  insert into public.requirement_rules (action, doc_type) values ('pre2_test', 'rep_instructor_cert');
+  insert into public.verification_requirements (action, doc_type) values ('pre2_test', 'rep_instructor_cert');
 
   -- 오늘(KST)까지 유효 → true
-  update public.documents set valid_until = (now() at time zone 'Asia/Seoul')::date
+  update public.verification_documents set valid_until = (now() at time zone 'Asia/Seoul')::date
   where id = 'd2000000-0000-4000-8000-0000000000b3';
 
   set local role authenticated;
@@ -217,7 +217,7 @@ begin
   reset role;
 
   -- 어제 만료 → false
-  update public.documents set valid_until = (now() at time zone 'Asia/Seoul')::date - 1
+  update public.verification_documents set valid_until = (now() at time zone 'Asia/Seoul')::date - 1
   where id = 'd2000000-0000-4000-8000-0000000000b3';
 
   set local role authenticated;

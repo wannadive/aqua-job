@@ -1,5 +1,5 @@
 -- =====================================================================
--- 아쿠아잡 2단계 공고 검사 (개발/테스트 전용) — 005 적용 후 실행
+-- 아쿠아잡 2단계 공고 검사 (개발/테스트 전용) — 005·006 적용 후 실행
 -- 실행: Supabase SQL Editor에 통째로 붙여 넣고 Run.
 -- 모든 작업은 begin … rollback 안에서 하므로 데이터가 남지 않는다.
 -- 성공하면 마지막에 'jobs ok' 한 줄이 나온다. 실패하면 '<검사 이름> 실패' 오류가 나온다.
@@ -65,17 +65,26 @@ update public.profiles set roles = array['center', 'instructor'], role = 'center
 update public.profiles set account_status = 'banned' where id = 'f2000000-0000-4000-8000-0000000000a3';
 
 -- 무료 기간에서 시작한다(운영 값이 무엇이든 이 트랜잭션 안에서만)
-update public.app_settings set value = 'false'::jsonb where key = 'paid_mode';
+update public.aqua_settings set value = 'false'::jsonb where key = 'paid_mode';
 
-insert into public.instructor_profiles (user_id, is_public) values
+insert into public.talent_profiles (user_id, is_public) values
   ('f2000000-0000-4000-8000-0000000000a1', true),
   ('f2000000-0000-4000-8000-0000000000a2', false);
 
 insert into public.center_profiles (user_id, center_name, representative_name, address, venues) values
   ('f2000000-0000-4000-8000-0000000000c1', '센터일다이브', '대표일', '서울시 송파구 1', array['잠실 풀']);
 
+-- 센터 공개 RPC는 centers.id(006)로 찾는다. 가입 트리거가 만든 센터 id를 담아 둔다.
+do $$
+begin
+  perform set_config('jobs.center_c1',
+    (select c.id::text from public.centers c where c.owner_user_id = 'f2000000-0000-4000-8000-0000000000c1'), true);
+  perform set_config('jobs.center_c2',
+    (select c.id::text from public.centers c where c.owner_user_id = 'f2000000-0000-4000-8000-0000000000c2'), true);
+end $$;
+
 -- 서류(제출 상태로 넣고 아래에서 관리자가 확인한다)
-insert into public.documents (id, owner_id, doc_type, file_path, meta) values
+insert into public.verification_documents (id, owner_id, doc_type, file_path, meta) values
   ('f2d00000-0000-4000-8000-0000000000c1', 'f2000000-0000-4000-8000-0000000000c1',
    'business_registration', 'f2000000-0000-4000-8000-0000000000c1/biz.jpg', '{}'),
   ('f2d00000-0000-4000-8000-0000000000c2', 'f2000000-0000-4000-8000-0000000000c2',
@@ -178,7 +187,7 @@ begin
   reset role;
   if not v_blocked then raise exception 'post_tour_requires_travel_business 실패 (여행업 없이 올림)'; end if;
 
-  insert into public.documents (id, owner_id, doc_type, file_path)
+  insert into public.verification_documents (id, owner_id, doc_type, file_path)
   values ('f2d00000-0000-4000-8000-0000000000c9', 'f2000000-0000-4000-8000-0000000000c1',
           'travel_business', 'f2000000-0000-4000-8000-0000000000c1/travel.jpg');
 
@@ -310,7 +319,7 @@ begin
     raise exception 'detail_requires_login 실패 (강사 상세 %, %)', v_desc, v_addr;
   end if;
 
-  update public.app_settings set value = 'true'::jsonb where key = 'paid_mode';
+  update public.aqua_settings set value = 'true'::jsonb where key = 'paid_mode';
 
   set local role authenticated;
   perform set_config('request.jwt.claims',
@@ -332,7 +341,7 @@ begin
   end if;
   reset role;
 
-  update public.app_settings set value = 'false'::jsonb where key = 'paid_mode';
+  update public.aqua_settings set value = 'false'::jsonb where key = 'paid_mode';
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -815,7 +824,7 @@ begin
   set local role authenticated;
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'f2000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
-  select count(*) into n from public.instructor_profiles
+  select count(*) into n from public.talent_profiles
     where user_id = 'f2000000-0000-4000-8000-0000000000a2';
   if n <> 1 then raise exception 'center_sees_applicant_resume_even_if_private 실패 (C1 이력서 %행)', n; end if;
   select display_name into v_name from public.profiles where id = 'f2000000-0000-4000-8000-0000000000a2';
@@ -834,7 +843,7 @@ begin
 
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'f2000000-0000-4000-8000-0000000000c2', 'role', 'authenticated')::text, true);
-  select count(*) into n from public.instructor_profiles
+  select count(*) into n from public.talent_profiles
     where user_id = 'f2000000-0000-4000-8000-0000000000a2';
   if n <> 0 then raise exception 'center_sees_applicant_resume_even_if_private 실패 (C2 이력서 %행)', n; end if;
   select count(*) into n from public.profiles where id = 'f2000000-0000-4000-8000-0000000000a2';
@@ -867,14 +876,14 @@ begin
   set local role anon;
   perform set_config('request.jwt.claims', json_build_object('role', 'anon')::text, true);
   select p.center_name, p.address, p.detail_visible into v_name, v_addr, v_visible
-    from public.get_center_public_profile('f2000000-0000-4000-8000-0000000000c1') p;
+    from public.get_center_public_profile(current_setting('jobs.center_c1')::uuid) p;
   if v_name is distinct from '센터일다이브' or v_addr is not null or v_visible then
     raise exception 'center_public_profile_detail_locked 실패 (비로그인 %, %, %)', v_name, v_addr, v_visible;
   end if;
 
-  select count(*) into n from public.list_center_job_history('f2000000-0000-4000-8000-0000000000c1');
+  select count(*) into n from public.list_center_job_history(current_setting('jobs.center_c1')::uuid);
   if n <> 3 then raise exception 'center_public_profile_detail_locked 실패 (C1 공고 이력 %행)', n; end if;
-  select count(*) into n from public.list_center_job_history('f2000000-0000-4000-8000-0000000000c2') h
+  select count(*) into n from public.list_center_job_history(current_setting('jobs.center_c2')::uuid) h
     where h.id = current_setting('jobs.x')::uuid;
   if n <> 0 then raise exception 'center_public_profile_detail_locked 실패 (숨김 공고가 이력에)'; end if;
   reset role;
@@ -883,7 +892,7 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'f2000000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
   select p.address into v_addr
-    from public.get_center_public_profile('f2000000-0000-4000-8000-0000000000c1') p;
+    from public.get_center_public_profile(current_setting('jobs.center_c1')::uuid) p;
   reset role;
   if v_addr is distinct from '서울시 송파구 1' then
     raise exception 'center_public_profile_detail_locked 실패 (로그인 강사 주소 %)', v_addr;
@@ -1142,7 +1151,7 @@ begin
 
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'f2000000-0000-4000-8000-0000000000c2', 'role', 'authenticated')::text, true);
-  select count(*) into n from public.instructor_profiles where user_id = 'f2000000-0000-4000-8000-0000000000a2';
+  select count(*) into n from public.talent_profiles where user_id = 'f2000000-0000-4000-8000-0000000000a2';
   if n <> 1 then raise exception 'withdrawn_applicant_hidden_again 실패 (지원 중 이력서 %행)', n; end if;
 
   perform set_config('request.jwt.claims',
@@ -1151,7 +1160,7 @@ begin
 
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'f2000000-0000-4000-8000-0000000000c2', 'role', 'authenticated')::text, true);
-  select count(*) into n from public.instructor_profiles where user_id = 'f2000000-0000-4000-8000-0000000000a2';
+  select count(*) into n from public.talent_profiles where user_id = 'f2000000-0000-4000-8000-0000000000a2';
   if n <> 0 then raise exception 'withdrawn_applicant_hidden_again 실패 (취소 후 이력서 %행)', n; end if;
   select count(*) into n from public.profiles where id = 'f2000000-0000-4000-8000-0000000000a2';
   if n <> 0 then raise exception 'withdrawn_applicant_hidden_again 실패 (취소 후 이름 %행)', n; end if;

@@ -35,8 +35,8 @@ select set_config('storage.allow_delete_query', 'true', true);
 
 -- 강사E의 서류 파일 자리 두 개(대조군에서 하나 지우고, 퇴출 뒤 하나를 지워 본다)
 insert into storage.objects (bucket_id, name, owner) values
-  ('documents', 'b0000000-0000-4000-8000-0000000000e1/control.jpg', 'b0000000-0000-4000-8000-0000000000e1'),
-  ('documents', 'b0000000-0000-4000-8000-0000000000e1/keep.jpg', 'b0000000-0000-4000-8000-0000000000e1');
+  ('verification-docs', 'b0000000-0000-4000-8000-0000000000e1/control.jpg', 'b0000000-0000-4000-8000-0000000000e1'),
+  ('verification-docs', 'b0000000-0000-4000-8000-0000000000e1/keep.jpg', 'b0000000-0000-4000-8000-0000000000e1');
 
 -- ---------------------------------------------------------------------
 -- 대조군: 활성 상태의 강사E는 이름·연락처를 고치고 자기 파일을 지울 수 있다
@@ -58,7 +58,7 @@ begin
   if n <> 1 then raise exception 'hardening_control 실패 (활성 상태 연락처 수정 %행)', n; end if;
 
   delete from storage.objects
-    where bucket_id = 'documents' and name = 'b0000000-0000-4000-8000-0000000000e1/control.jpg';
+    where bucket_id = 'verification-docs' and name = 'b0000000-0000-4000-8000-0000000000e1/control.jpg';
   get diagnostics n = row_count;
   if n <> 1 then raise exception 'hardening_control 실패 (활성 상태 파일 삭제 %행)', n; end if;
 
@@ -119,7 +119,7 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
--- banned_cannot_delete_document_object: 퇴출된 강사E는 documents 버킷의 자기 파일을 지울 수 없다
+-- banned_cannot_delete_document_object: 퇴출된 강사E는 verification-docs 버킷의 자기 파일을 지울 수 없다
 -- ---------------------------------------------------------------------
 do $$
 declare
@@ -131,7 +131,7 @@ begin
     json_build_object('sub', 'b0000000-0000-4000-8000-0000000000e1', 'role', 'authenticated')::text, true);
   begin
     delete from storage.objects
-      where bucket_id = 'documents' and name = 'b0000000-0000-4000-8000-0000000000e1/keep.jpg';
+      where bucket_id = 'verification-docs' and name = 'b0000000-0000-4000-8000-0000000000e1/keep.jpg';
     get diagnostics n = row_count;
   exception when insufficient_privilege then
     n := 0;
@@ -139,7 +139,7 @@ begin
   reset role;
 
   select count(*) into v_left from storage.objects
-    where bucket_id = 'documents' and name = 'b0000000-0000-4000-8000-0000000000e1/keep.jpg';
+    where bucket_id = 'verification-docs' and name = 'b0000000-0000-4000-8000-0000000000e1/keep.jpg';
   if n <> 0 or v_left <> 1 then
     raise exception 'banned_cannot_delete_document_object 실패 (삭제 %행, 남은 파일 %)', n, v_left;
   end if;
@@ -158,13 +158,13 @@ begin
   -- 대조군: 강사G 자격증, 센터F 사업자등록증은 들어간다
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'b0000000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
-  insert into public.documents (owner_id, doc_type, file_path)
+  insert into public.verification_documents (owner_id, doc_type, file_path)
   values ('b0000000-0000-4000-8000-0000000000a2', 'instructor_cert',
           'b0000000-0000-4000-8000-0000000000a2/cert.jpg');
 
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'b0000000-0000-4000-8000-0000000000f1', 'role', 'authenticated')::text, true);
-  insert into public.documents (owner_id, doc_type, file_path)
+  insert into public.verification_documents (owner_id, doc_type, file_path)
   values ('b0000000-0000-4000-8000-0000000000f1', 'business_registration',
           'b0000000-0000-4000-8000-0000000000f1/biz.jpg');
 
@@ -173,7 +173,7 @@ begin
     json_build_object('sub', 'b0000000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
   v_blocked := false;
   begin
-    insert into public.documents (owner_id, doc_type, file_path)
+    insert into public.verification_documents (owner_id, doc_type, file_path)
     values ('b0000000-0000-4000-8000-0000000000a2', 'business_registration',
             'b0000000-0000-4000-8000-0000000000a2/biz.jpg');
   exception when insufficient_privilege then
@@ -188,7 +188,7 @@ begin
     json_build_object('sub', 'b0000000-0000-4000-8000-0000000000f1', 'role', 'authenticated')::text, true);
   v_blocked := false;
   begin
-    insert into public.documents (owner_id, doc_type, file_path)
+    insert into public.verification_documents (owner_id, doc_type, file_path)
     values ('b0000000-0000-4000-8000-0000000000f1', 'id_card',
             'b0000000-0000-4000-8000-0000000000f1/id.jpg');
   exception when insufficient_privilege then
@@ -212,7 +212,7 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'b0000000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
   begin
-    insert into public.documents (owner_id, doc_type, file_path)
+    insert into public.verification_documents (owner_id, doc_type, file_path)
     values ('b0000000-0000-4000-8000-0000000000a2', 'first_aid', null);
   exception when insufficient_privilege then
     v_blocked := true;

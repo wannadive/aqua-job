@@ -10,10 +10,11 @@ AQUA JOB은 나중에 핀프렌즈(워너다이브의 발전형, `dev/wanna-dive
 |---|---|---|
 | `profiles` (display_name, role, roles, account_status) | WD `profiles` (name, email, phone, roles, status/approval_status) | 같은 개념. 합칠 때 display_name→name, account_status→status |
 | role `admin` | 플랫폼 운영자 | WD admin = 센터1 관리자 → 합칠 때 `platform_admin` 분리 |
-| role `center` + `center_profiles` (user_id PK) | 테넌트 `centers.id` + 센터 관리자 | 계정 ≠ 센터. 공고는 센터 소속, 센터 관리자가 작성 |
-| role `instructor` + `instructor_profiles` | 플랫폼 수준 강사 이력서 | center_id 없음. 소속은 별개(VISION §3) |
+| role `center` + `center_profiles` (user_id PK, `center_id`) + `centers` (006) | 테넌트 `centers.id` + 센터 관리자 | 계정 ≠ 센터. 공고는 센터 소속(`job_posts.center_id`), 센터 관리자가 작성 |
+| role `instructor` + `talent_profiles` (006, 옛 `instructor_profiles`) | 플랫폼 수준 강사 이력서 | center_id 없음. 소속은 별개(VISION §3) |
 | `job_posts` / `job_applications` | 공유(공개) 시장 레이어 | `job_posts.center_id → centers.id`, visibility public |
-| `documents` | 플랫폼 수준 확인 | owner_id 기준. 센터 서류는 나중에 center_id로 |
+| `verification_documents` (006, 옛 `documents`) + 버킷 `verification-docs` | 플랫폼 수준 확인 | owner_id 기준. 센터 서류는 나중에 center_id로 |
+| `aqua_settings` (006, 옛 `app_settings`) · `verification_requirements` (006, 옛 `requirement_rules`) | — | AQUA 전용 설정·요건 표. WD `app_settings`(value TEXT)와 분리 |
 
 목표 모델: 핀프렌즈 `centers` 하나에 `kind = 'managed' | 'listing'`, `center_members(center_id, user_id, role)`.
 AQUA 센터 계정은 합칠 때 해당 센터의 owner 멤버가 된다.
@@ -63,7 +64,7 @@ lib/app-shell/
 ```
 lib/jobs/ + components/jobs/                       공고·지원 (device-key.ts 포함)
 lib/verification/ + components/verification/       서류 확인 (document-*, fact-badge)
-                  components/verification/admin/   review-queue, review-detail, 원본 삭제 대기 UI
+                  components/verification/admin/   review-queue(원본 삭제 대기 목록 `PendingPurges` 포함), review-detail
 lib/talent-profile/ + components/talent-profile/   강사 이력서 (resume-*)
 lib/center-listing/ + components/center-listing/   센터 소개 (center-profile-form)
 lib/avatar/api.ts                                  아바타 업로드/URL
@@ -84,13 +85,17 @@ components/shared/step-question.tsx   공용 UI 조각 (셸·도메인 어디서
 
 ## 4. DB 계획
 
-**지금 (Task 4c, `006_merge_ready`)**
-- `instructor_profiles→talent_profiles`, `documents→verification_documents`, `requirement_rules→verification_requirements`, `app_settings→aqua_settings` (`admin_actions`는 유지)
-- 이름이 바뀐 테이블을 참조하는 함수는 **최신 정의**(005/004)에서 복사해 재정의, 정책 이름도 변경
-- Storage `documents` 버킷 → `verification-docs` (테스트 파일만 있음)
-- `centers(id, owner_user_id, name, kind 'listing', created_at)` 신설 + 기존 센터 백필, `center_profiles.center_id`
-- `create_job_post`가 `job_posts.center_id`를 채우고 → NOT NULL, `get_center_public_profile`은 center_id 기준
-- `NOTIFY pgrst`, `phase2_merge_ready_checks.sql`
+**완료 (Task 4c, `supabase/migrations/20261024_006_merge_ready.sql`)** — 검사: `supabase/test/phase2_merge_ready_checks.sql` (`merge ok`)
+- [x] `instructor_profiles→talent_profiles`, `documents→verification_documents`, `requirement_rules→verification_requirements`, `app_settings→aqua_settings` (`admin_actions`는 유지). 제약·인덱스·트리거·정책 이름도 새 테이블 이름으로
+- [x] 이름이 바뀐 테이블을 쓰는 함수는 **최신 정의**에서 복사해 재정의: `effective_doc`·`has_requirements`(004), `review_document`(001), `can_view_profile`·`paid_mode`·`get_public_facts`(005)
+- [x] Storage 비공개 버킷 `verification-docs` + 정책(옛 `documents` 버킷 정책 002 기준 복사). `verification_documents.bucket` 칸: 006 이전 행은 `documents`, 새 행은 `verification-docs`(앱의 서명 주소·원본 삭제는 행의 bucket을 따른다). Storage 객체는 SQL로 옮기지 않았다
+- [x] `centers(id, owner_user_id unique, name, kind 'listing'|'managed', created_at)` 신설 + 센터 역할 계정 백필. 센터 역할이 생기면(가입·역할 변경) 트리거가 행을 만들고, `center_profiles.center_name`이 바뀌면 `centers.name`을 맞춘다. 누구나 id·name·kind만 읽는다(칸 권한), 쓰기는 트리거만
+- [x] `center_profiles.center_id`(트리거가 항상 주인의 센터로 고정), `job_posts.center_id` 백필 → NOT NULL + 외래 키, `create_job_post`가 채움
+- [x] `get_center_public_profile(p_center_id)` · `list_center_job_history(p_center_id)`는 `centers.id`로 찾는다. 공고 요약·상세·이력에 `center_id` 칸 추가
+- [x] 구독 권한 자리 `center_has_product` / `user_has_product` (아래 6절)
+- [x] `NOTIFY pgrst`
+
+**남은 정리 (테스트 데이터를 지운 뒤)**: 옛 Storage 버킷 `documents`와 그 정책(`documents_owner_*`, `documents_admin_*`)을 지우고 `verification_documents_bucket_check`를 `verification-docs` 하나로 좁힌다.
 
 **합칠 때까지 미룸**: `is_admin` 시그니처 통일, `profiles` 컬럼 통일, `center_members`, 연락처 병합,
 `handle_new_user`/guard 병합, `admin_actions` 병합, `platform_admin` 역할.
@@ -99,13 +104,39 @@ components/shared/step-question.tsx   공용 UI 조각 (셸·도메인 어디서
 
 - [ ] `is_admin`: WD `is_admin(p_uid uuid default auth.uid())`로 통일. AQUA의 `is_admin()` 호출은 인자 없이도 동작하므로 정책 수정 불필요한지 확인
 - [ ] `profiles` 컬럼: display_name→name, account_status→status, email/phone 추가. `roles text[]` 규칙 맞추기
-- [ ] `centers`: AQUA `centers`(kind 'listing')를 WD `centers`에 `kind`('managed'|'listing') 컬럼으로 합치고, `center_members(center_id, user_id, role)` 신설, AQUA `owner_user_id`를 owner 멤버로 이관
+- [ ] `centers`: AQUA `centers`(006, kind 'listing')를 WD `centers`에 `kind`('managed'|'listing') 컬럼으로 합치고(둘 다 uuid), `center_members(center_id, user_id, role)` 신설, AQUA `owner_user_id`를 owner 멤버로 이관. AQUA의 센터 트리거(`profiles_ensure_center`, `center_profiles_link_center`, `center_profiles_sync_center_name`)는 WD 센터 생성 흐름으로 대체
+- [ ] 구독: `center_has_product`/`user_has_product`를 WD 결제·구독 표에 연결(센터앱 `center_app` 포함), 묶음 상품 규칙 반영
 - [ ] 연락처: AQUA `private_contacts`와 WD profiles의 phone/email 관계 결정(병합 또는 유지), RLS 재확인
 - [ ] `handle_new_user` + `guard_profile_privileged_columns` + 트리거 `profiles_guard_privileged`를 수작업 병합(최신 정의 파일 기준)
 - [ ] `admin_actions` 병합(컬럼·정책), 감사 기록 유지
-- [ ] Storage `avatars` 정책을 `{uid}/...` 기준으로 하나로 병합, `verification-docs` 정책 유지
+- [ ] Storage `avatars` 정책을 `{uid}/...` 기준으로 하나로 병합, `verification-docs` 정책 유지(옛 `documents` 버킷이 남아 있으면 먼저 정리)
 - [ ] `platform_admin` 역할 도입: AQUA admin → platform_admin, WD admin(센터1 관리자)은 그대로. 서류 심사·공고 관리 RLS를 platform_admin 기준으로
 - [ ] 셸 교체: `components/app-shell`, `lib/app-shell`을 WD 셸(`useAuth`, 라우터, 역할 전환)로 대체하고, 도메인 화면을 WD 라우팅에 연결(props 주입)
 - [ ] `app/` 라우트 병합(URL 유지), `lib/brand.ts`의 브랜드 값 통일
 - [ ] `lib/boundaries.test.ts` 경로 목록 갱신 후 `pnpm test` / `typecheck` / `build`
 - [ ] 일반 이름 함수(`effective_doc`, `get_public_facts`, `has_requirements`, `can_view_profile`, `paid_mode`, `is_active`)가 WD와 겹치지 않는지 확인
+
+## 6. 요금·구독 (결정됨, 2026-10-23)
+
+- **센터**: 아쿠아잡 센터 월 구독 `aquajob` → 공고 등록·강사에게 제안.
+- **프리랜서 강사**: 아쿠아잡 강사 월 구독 `aquajob_talent` → 공고 상세 열람·지원(·제안 수락).
+- **센터앱**(핀프렌즈 센터 운영 기능) 구독 `center_app`과 **따로 팔거나 묶어서** 판다(Adobe 제품 묶음처럼). 공고 건당 결제는 하지 않는다.
+- **무료 기간**(`aqua_settings.paid_mode = false`)에는 전부 열려 있다. 결제(PG)·구독 표는 나중에 붙인다.
+
+### 권한 자리 (006)
+- `center_has_product(p_center_id, p_product)`, `user_has_product(p_user, p_product)` — SECURITY DEFINER, stable.
+  무료 기간이면 true. 유료 전환 후에는 결제 표가 생기기 전까지 **운영자(관리자) 계정만** true(자리만).
+  본인·자기 센터·관리자·서버 세션만 물어볼 수 있고(남의 것은 false), 모르는 상품 이름은 false.
+- 연결된 곳: `create_job_post` → 호출자 센터의 `aquajob`. `can_view_job_detail`(→ `get_job_detail`, 센터 공개 프로필 상세 칸) →
+  관리자 · 공고 주인 · 강사의 `aquajob_talent` · 자기 센터의 `aquajob`. `apply_to_job` → 강사의 `aquajob_talent`.
+  비로그인 요약(`list_public_jobs`, `get_job_summary`, 센터 공개 프로필 기본 칸)은 그대로 누구나.
+- 결제를 붙일 때는 이 두 함수 안만 바꾼다(구독 표 조회). RPC·정책에서 `paid_mode`로 직접 분기하지 않는다.
+
+### centers: 지금 vs 합칠 때
+- **지금**: `centers` 한 행 = 센터 역할 계정 하나(`owner_user_id` unique, `kind = 'listing'`). 권한 판정은 "이 센터의 주인인가".
+- **합칠 때**: WD `centers`에 합치고 `center_members(center_id, user_id, role)`로 여러 관리자. `owner_user_id`는 owner 멤버로 옮긴다.
+  권한 판정을 "이 센터의 관리자 멤버인가"로 바꿔도 `center_has_product` 호출부는 그대로 둔다.
+
+### 열린 질문
+- **핀프렌즈 센터 소속 강사의 아쿠아잡 지원**: (1) 소속 강사도 `aquajob_talent`를 따로 결제하는가, 아니면 센터의 센터앱·아쿠아잡 구독에 포함하는가.
+  (2) 소속 강사가 **다른 센터 공고**에 지원하는 것을 허용하는가 — 센터의 "소속 강사 보호" 원칙과 충돌할 수 있다(센터 설정으로 둘지 포함). 결정 전에는 지금 규칙(프리랜서와 같음)으로 둔다.

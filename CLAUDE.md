@@ -46,7 +46,7 @@ docs/           설계·계획·기능 명세, FINFRIENDS_INTEGRATION.md
 
 ### 연락처 / 서류 원본 경계
 - 연락처(휴대폰·이메일)는 `private_contacts` 테이블에만 둔다. 1단계에서는 본인과 관리자만 읽는다.
-- 서류 원본은 Storage 비공개 버킷 `documents`에만 둔다. 본인과 관리자만 읽는다.
+- 서류 원본은 Storage 비공개 버킷 `verification-docs`에만 둔다(006 이전 테스트 서류만 옛 버킷 `documents`에 남음 — 행의 `bucket` 칸을 따른다). 본인과 관리자만 읽는다.
 - 신분증(`id_card`, `representative_id`)은 확인 후 원본을 삭제한다.
 - 접근 제어는 RLS로 한다. 화면에서 숨기는 것만으로 끝내지 않는다.
 
@@ -71,7 +71,8 @@ docs/           설계·계획·기능 명세, FINFRIENDS_INTEGRATION.md
 AQUA JOB은 나중에 핀프렌즈(`../wanna-dive`)에 합쳐진다. 계획·충돌·체크리스트: `docs/FINFRIENDS_INTEGRATION.md`.
 
 - 새 테이블·함수·버킷은 도메인 접두어(`job_`, `verification_`, `talent_`)를 붙인다. `documents`, `settings` 같은 일반 이름 금지.
-- 센터 데이터는 `center_id → centers.id`. `user_id`를 센터 대신 쓰지 않는다. 권한 = "이 센터의 관리자인가".
+- 센터 데이터는 `center_id → centers.id`. `user_id`를 센터 대신 쓰지 않는다. 권한 = "이 센터의 관리자인가". 지금 `centers`는 센터 역할 계정마다 한 행(`owner_user_id`, 트리거가 만든다), 합칠 때 `center_members`로.
+- 유료 기능 권한은 `center_has_product(센터, 상품)` / `user_has_product(회원, 상품)`로만 확인한다(상품: `aquajob`·`aquajob_talent`·`center_app`). RPC·정책에서 `paid_mode`로 직접 분기하지 않는다(화면 안내용으로 읽는 것은 괜찮다).
 - 강사 이력서·서류 확인은 플랫폼 수준(center_id 없음). 공고는 공유 레이어(visibility public).
 - WD에 있는 함수 이름(`is_admin`, `handle_new_user`, `guard_profile_privileged_columns`, `update_updated_at`)과 시그니처가 다른 함수를 새로 만들지 않는다.
 - 공용 함수를 재정의할 때는 가장 최근 마이그레이션 정의를 복사한다(옛 파일 복사 시 중간 규칙 유실).

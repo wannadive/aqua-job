@@ -51,7 +51,7 @@ update public.profiles set roles = array['instructor', 'center']
 where id = 'c0000000-0000-4000-8000-0000000000a2';
 
 -- 강사P의 공개 이력서
-insert into public.instructor_profiles (user_id, intro, is_public)
+insert into public.talent_profiles (user_id, intro, is_public)
 values ('c0000000-0000-4000-8000-0000000000a4', '공개 소개', true);
 
 -- ---------------------------------------------------------------------
@@ -135,19 +135,19 @@ begin
   set local role authenticated;
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'c0000000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
-  insert into public.documents (owner_id, doc_type, file_path)
+  insert into public.verification_documents (owner_id, doc_type, file_path)
   values ('c0000000-0000-4000-8000-0000000000a2', 'instructor_cert',
           'c0000000-0000-4000-8000-0000000000a2/cert.jpg');
-  insert into public.documents (owner_id, doc_type, file_path)
+  insert into public.verification_documents (owner_id, doc_type, file_path)
   values ('c0000000-0000-4000-8000-0000000000a2', 'business_registration',
           'c0000000-0000-4000-8000-0000000000a2/biz.jpg');
-  select count(*) into n from public.documents where owner_id = 'c0000000-0000-4000-8000-0000000000a2';
+  select count(*) into n from public.verification_documents where owner_id = 'c0000000-0000-4000-8000-0000000000a2';
   if n <> 2 then raise exception 'multi_role_doc_types 실패 (강사·센터K 서류 %행)', n; end if;
 
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'c0000000-0000-4000-8000-0000000000a3', 'role', 'authenticated')::text, true);
   begin
-    insert into public.documents (owner_id, doc_type, file_path)
+    insert into public.verification_documents (owner_id, doc_type, file_path)
     values ('c0000000-0000-4000-8000-0000000000a3', 'business_registration',
             'c0000000-0000-4000-8000-0000000000a3/biz.jpg');
   exception when insufficient_privilege then
@@ -171,12 +171,12 @@ begin
   set local role authenticated;
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'c0000000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
-  select count(*) into n from public.instructor_profiles where user_id = 'c0000000-0000-4000-8000-0000000000a4';
+  select count(*) into n from public.talent_profiles where user_id = 'c0000000-0000-4000-8000-0000000000a4';
   if n <> 1 then raise exception 'center_view_with_multi_role 실패 (강사·센터K가 %행 봄)', n; end if;
 
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'c0000000-0000-4000-8000-0000000000a3', 'role', 'authenticated')::text, true);
-  select count(*) into n from public.instructor_profiles where user_id = 'c0000000-0000-4000-8000-0000000000a4';
+  select count(*) into n from public.talent_profiles where user_id = 'c0000000-0000-4000-8000-0000000000a4';
   if n <> 0 then raise exception 'center_view_with_multi_role 실패 (강사만인 S가 %행 봄)', n; end if;
 
   reset role;
@@ -184,7 +184,7 @@ end $$;
 
 -- ---------------------------------------------------------------------
 -- multi_role_profiles_insert: 관리자·강사·센터M은 처음 강사 탭·센터 탭을 열 때
---   자기 instructor_profiles·center_profiles를 만들 수 있다
+--   자기 talent_profiles·center_profiles를 만들 수 있다
 -- ---------------------------------------------------------------------
 do $$
 begin
@@ -192,7 +192,7 @@ begin
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'c0000000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
   begin
-    insert into public.instructor_profiles (user_id) values ('c0000000-0000-4000-8000-0000000000a1');
+    insert into public.talent_profiles (user_id) values ('c0000000-0000-4000-8000-0000000000a1');
     insert into public.center_profiles (user_id) values ('c0000000-0000-4000-8000-0000000000a1');
   exception when insufficient_privilege then
     raise exception 'multi_role_profiles_insert 실패';
