@@ -670,7 +670,7 @@ begin
   select count(*) into n from public.job_offers where id = v_o_i2 and status = 'expired';
   if n <> 1 then raise exception 'ban_effects 실패 (퇴출 강사가 받은 제안)'; end if;
   select count(*) into n from public.aqua_notifications
-    where user_id = i2
+    where user_id = i2 and kind in ('offer_expired', 'application_closed')  -- 퇴출 전 '제안 도착'(offer_new)은 같은 링크라 제외
       and (link = '/?tab=offers&offer=' || v_o_i2 or link = '/?tab=applications&job=' || v_m5);
   if n <> 0 then raise exception 'ban_effects 실패 (퇴출 강사에게 간 마감 알림 %건)', n; end if;
   select count(*) into n from public.aqua_notifications
