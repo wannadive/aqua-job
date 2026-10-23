@@ -187,3 +187,35 @@ export function jobErrorMessage(err: { code?: string | null; message?: string | 
 export function sortOpenFirst<T extends { status: JobStatus }>(jobs: T[]): T[] {
   return [...jobs.filter((j) => j.status === "open"), ...jobs.filter((j) => j.status !== "open")];
 }
+
+export type ApplicationGroup = "applied" | "selected" | "closed" | "withdrawn";
+
+interface GroupInput {
+  status: string;
+  job: { status: JobStatus } | null;
+}
+
+/**
+ * 지원 현황 묶음: 선택됨 / 취소함 / 지원함(결과 대기: 지원했고 공고가 아직 진행중) / 마감·미선택(그 밖).
+ * 지원했는데 공고가 마감·기간 지남·모집 완료·내려간 경우는 마감·미선택으로 본다.
+ */
+export function applicationGroup(a: GroupInput): ApplicationGroup {
+  if (a.status === "selected") return "selected";
+  if (a.status === "withdrawn") return "withdrawn";
+  if (a.status === "applied" && a.job?.status === "open") return "applied";
+  return "closed";
+}
+
+/** 내 지원 숫자: 지원 중(applied) / 총 지원(취소 제외) / 선택됨 */
+export function myApplicationCounts(rows: { status: string }[]): { active: number; total: number; selected: number } {
+  let active = 0;
+  let total = 0;
+  let selected = 0;
+  for (const r of rows) {
+    if (r.status === "withdrawn") continue;
+    total += 1;
+    if (r.status === "applied") active += 1;
+    if (r.status === "selected") selected += 1;
+  }
+  return { active, total, selected };
+}

@@ -12,6 +12,11 @@ import { DOC_TYPES } from "@/lib/verification/config";
 import { displayStatus, latestByType, todayKst } from "@/lib/verification/logic";
 import { useAuth } from "@/lib/app-shell/auth-provider";
 import { JobsBrowser } from "@/components/app-shell/public/public-pages";
+import { ApplySheet } from "@/components/jobs/apply-sheet";
+import { MyApplications } from "@/components/jobs/my-applications";
+import { useMyApplications } from "@/components/jobs/use-my-applications";
+import { myApplicationCounts } from "@/lib/jobs/logic";
+import type { JobSummary } from "@/lib/jobs/types";
 import { ResumeEditor } from "@/components/talent-profile/resume-editor";
 
 type Tab = "home" | "jobs" | "offers" | "applications" | "resume";
@@ -33,7 +38,15 @@ function ComingSoon({ title }: { title: string }) {
   );
 }
 
-function HomeTab({ onResume }: { onResume: () => void }) {
+function HomeTab({
+  onResume,
+  counts,
+  onApplications,
+}: {
+  onResume: () => void;
+  counts: { active: number; total: number; selected: number } | null;
+  onApplications: () => void;
+}) {
   const { user, logout } = useAuth();
   const [profile, setProfile] = useState<InstructorProfile | null>(null);
   const [docs, setDocs] = useState<{ submitted: number; verified: number; expiring: number; attention: number } | null>(null);
@@ -97,6 +110,35 @@ function HomeTab({ onResume }: { onResume: () => void }) {
       </section>
 
       <section className="rounded-card bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-bold text-ink">내 지원</h2>
+        {counts ? (
+          <>
+            {counts.selected > 0 && (
+              <button
+                type="button"
+                onClick={onApplications}
+                className="mt-3 w-full rounded-xl bg-ok-bg py-3 text-center text-sm font-semibold text-ok"
+              >
+                선택됐어요 · {counts.selected}건 확인하기
+              </button>
+            )}
+            <div className="mt-3 grid grid-cols-2 gap-2 text-center">
+              <div className="rounded-xl bg-surface py-3">
+                <div className="text-xl font-bold text-ink">{counts.active}</div>
+                <div className="text-xs text-muted">지원 중</div>
+              </div>
+              <div className="rounded-xl bg-surface py-3">
+                <div className="text-xl font-bold text-ink">{counts.total}</div>
+                <div className="text-xs text-muted">총 지원</div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-muted">불러오는 중…</p>
+        )}
+      </section>
+
+      <section className="rounded-card bg-white p-5 shadow-sm">
         <h2 className="text-lg font-bold text-ink">서류 상태</h2>
         {docs ? (
           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
@@ -135,13 +177,32 @@ function HomeTab({ onResume }: { onResume: () => void }) {
 
 export function InstructorShell() {
   const [tab, setTab] = useState<Tab>("home");
+  const [applying, setApplying] = useState<JobSummary | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const my = useMyApplications();
+  const counts = my.loading || my.error ? null : myApplicationCounts(my.apps);
+  const [openJobId, setOpenJobId] = useState<string | null>(null);
   return (
     <div className="mx-auto min-h-app w-full max-w-md">
       <main className="px-5 pb-28 pt-8">
-        {tab === "home" && <HomeTab onResume={() => setTab("resume")} />}
-        {tab === "jobs" && <JobsBrowser />}
+        {tab === "home" && <HomeTab onResume={() => setTab("resume")} counts={counts} onApplications={() => setTab("applications")} />}
+        {tab === "jobs" && (
+          <JobsBrowser key={openJobId ?? "list"} initialJobId={openJobId} onApply={setApplying} reloadKey={reloadKey} />
+        )}
         {tab === "offers" && <ComingSoon title="제안" />}
-        {tab === "applications" && <ComingSoon title="지원 현황" />}
+        {tab === "applications" && (
+          <MyApplications
+            apps={my.apps}
+            loading={my.loading}
+            error={my.error}
+            onRetry={() => void my.reload()}
+            onOpenJob={(id) => {
+              setOpenJobId(id);
+              setTab("jobs");
+            }}
+            onChanged={my.reload}
+          />
+        )}
         {tab === "resume" && (
           <div className="space-y-4">
             <ResumeEditor />
@@ -149,13 +210,28 @@ export function InstructorShell() {
           </div>
         )}
       </main>
+      <ApplySheet
+        job={applying}
+        onClose={() => setApplying(null)}
+        onApplied={async () => {
+          setReloadKey((n) => n + 1);
+          await my.reload();
+        }}
+        onOpenResume={() => {
+          setApplying(null);
+          setTab("resume");
+        }}
+      />
       <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-white pb-[env(safe-area-inset-bottom)]">
         <ul className="mx-auto flex max-w-md">
           {TABS.map(({ key, label, icon: Icon }) => (
             <li key={key} className="flex-1">
               <button
                 type="button"
-                onClick={() => setTab(key)}
+                onClick={() => {
+                  if (key === "jobs") setOpenJobId(null);
+                  setTab(key);
+                }}
                 aria-current={tab === key ? "page" : undefined}
                 className={`flex w-full flex-col items-center gap-1 py-2.5 text-[11px] font-semibold ${tab === key ? "text-ink" : "text-muted"}`}
               >

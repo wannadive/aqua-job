@@ -198,3 +198,20 @@ test("sortOpenFirst: 진행중이 먼저, 나머지는 순서 유지", async () 
   ];
   assert.deepEqual(sortOpenFirst(list).map((j) => j.id), ["b", "d", "a", "c"]);
 });
+
+import { applicationGroup, myApplicationCounts } from "./logic.ts";
+
+test("applicationGroup: 선택됨·취소함·지원함·마감/미선택", () => {
+  assert.equal(applicationGroup({ status: "selected", job: { status: "closed" } }), "selected");
+  assert.equal(applicationGroup({ status: "withdrawn", job: { status: "open" } }), "withdrawn");
+  assert.equal(applicationGroup({ status: "applied", job: { status: "open" } }), "applied");
+  assert.equal(applicationGroup({ status: "applied", job: { status: "expired" } }), "closed");
+  assert.equal(applicationGroup({ status: "applied", job: null }), "closed");
+  assert.equal(applicationGroup({ status: "not_selected", job: { status: "open" } }), "closed");
+});
+
+test("myApplicationCounts: 취소 제외, 지원 중·선택 따로", () => {
+  const r = myApplicationCounts([{ status: "applied" }, { status: "selected" }, { status: "withdrawn" }, { status: "not_selected" }]);
+  assert.deepEqual(r, { active: 1, total: 3, selected: 1 });
+  assert.deepEqual(myApplicationCounts([]), { active: 0, total: 0, selected: 0 });
+});

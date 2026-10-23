@@ -4,6 +4,7 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CenterPublicProfileView } from "@/components/centers/center-public-profile";
+import { ApplySheet } from "@/components/jobs/apply-sheet";
 import { JobDetail } from "@/components/jobs/job-detail";
 import { JobList } from "@/components/jobs/job-list";
 import { BRAND } from "@/lib/brand";
@@ -71,15 +72,30 @@ export function PublicJobsPage() {
 export function PublicJobPage({ id }: { id: string }) {
   const router = useRouter();
   const viewer = useContext(ViewerContext);
+  const [applying, setApplying] = useState<JobSummary | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  // 지원은 로그인한 강사만(서버 apply_to_job이 다시 확인한다). 비로그인은 가입, 센터 전용 계정은 지원 버튼 없음.
+  const canApply = !!viewer.userId && viewer.roles.includes("instructor");
   return (
-    <JobDetail
-      jobId={id}
-      viewer={viewer}
-      onBack={() => router.push("/jobs")}
-      onOpenCenter={(cid) => router.push(`/centers/${cid}`)}
-      onSignup={() => router.push(SIGNUP)}
-      onApply={() => router.push("/")}
-    />
+    <>
+      <JobDetail
+        jobId={id}
+        viewer={viewer}
+        onBack={() => router.push("/jobs")}
+        onOpenCenter={(cid) => router.push(`/centers/${cid}`)}
+        onSignup={() => router.push(SIGNUP)}
+        onApply={canApply ? setApplying : undefined}
+        reloadKey={reloadKey}
+      />
+      {canApply && (
+        <ApplySheet
+          job={applying}
+          onClose={() => setApplying(null)}
+          onApplied={() => setReloadKey((n) => n + 1)}
+          onOpenResume={() => router.push("/")}
+        />
+      )}
+    </>
   );
 }
 
@@ -103,9 +119,18 @@ type View = { kind: "list" } | { kind: "job"; id: string } | { kind: "center"; i
  * 로그인한 셸 안의 공고 탭. 같은 목록·상세·센터 프로필 컴포넌트를 쓰고, 화면 이동은 여기서 쥔다.
  * 이미 SupabaseAuthProvider 안에 있다.
  */
-export function JobsBrowser({ onApply, reloadKey }: { onApply?: (job: JobSummary) => void; reloadKey?: number }) {
+export function JobsBrowser({
+  onApply,
+  reloadKey,
+  initialJobId,
+}: {
+  onApply?: (job: JobSummary) => void;
+  reloadKey?: number;
+  /** 지원 현황에서 카드를 눌러 들어왔을 때 바로 열 공고 */
+  initialJobId?: string | null;
+}) {
   const { viewer } = useViewer();
-  const [stack, setStack] = useState<View[]>([{ kind: "list" }]);
+  const [stack, setStack] = useState<View[]>(initialJobId ? [{ kind: "list" }, { kind: "job", id: initialJobId }] : [{ kind: "list" }]);
   const view = stack[stack.length - 1];
   const push = (v: View) => setStack((s) => [...s, v]);
   const pop = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
