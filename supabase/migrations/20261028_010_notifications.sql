@@ -3,7 +3,7 @@
 -- 아쿠아잡 010: 앱 안 알림 · 웹 푸시 · 서류 만료 알림
 -- 001 → … → 009를 실행한 뒤 Supabase SQL Editor에서 통째로 실행한다.
 -- 다시 실행해도 깨지지 않게 썼다(create table/index if not exists, drop constraint/policy/trigger if exists →
--- 다시 만들기, create or replace, cron 예약은 없을 때만).
+-- 다시 만들기, create or replace, cron 예약은 지우고 다시).
 --
 -- 실행 전 준비(Supabase 대시보드 → Database → Extensions): pg_net, pg_cron 두 확장을 켠다.
 --   이 파일도 켜 보려고 하지만(create extension if not exists), 권한 때문에 실패하면 안내만 남기고 넘어간다.
@@ -34,8 +34,11 @@
 -- 4) aqua_push_outbox·aqua_push_config·aqua_doc_expiry_notices: 회원 접근 권한 없음.
 --    대기열은 service role만(aqua_claim_push_outbox), 설정표는 트리거 함수만 읽는다.
 -- 5) 푸시는 활성 회원에게만. 단, 계정 정지·퇴출 알림은 당사자에게 보낸다.
---    푸시 내용 = 제목·본문·링크만(발송 API가 그 셋만 싣는다).
+--    푸시 내용 = 제목·본문·링크만(발송 API가 그 셋만 싣는다). 잠금 화면에 뜨므로 서류·계정 조치·공고 숨김·마감 알림은
+--    "앱에서 확인해 주세요"(제목은 브랜드 이름)만 — 서류 종류·사유는 앱 안 알림에만. 나머지는 센터명·공고 제목까지.
+--    대기열에 쌓인 뒤 발송 호출은 트랜잭션마다 한 번(aqua.push_kicked).
 -- 6) 알림 만들기가 실패해도 원래 작업(지원·선택·제안·서류 확인)은 막지 않는다(트리거가 경고만 남김).
+-- 7) 지원 취소·재지원 반복: 센터의 새 지원자 알림은 같은 지원 행에 대해 24시간에 한 번.
 --
 -- 관리자 조치 사유 전달(Task 4가 쓰는 자리): 관리자 RPC가 상태를 바꾸기 직전에
 --   perform set_config('aqua.action_reason', '<사유 문구>', true);
@@ -248,6 +251,12 @@ begin
     raise exception '알림 키 형식이 올바르지 않아요' using errcode = '22023';
   end if;
 
+  -- 같은 기기를 다른 계정이 가져가면, 이전 계정 앞으로 쌓여 아직 안 보낸 푸시는 지운다(새 주인에게 가지 않게)
+  delete from public.aqua_push_outbox o
+  using public.aqua_push_subscriptions s
+  where s.endpoint = p_endpoint and s.user_id <> v_uid
+    and o.subscription_id = s.id and o.sent_at is null;
+
   insert into public.aqua_push_subscriptions (user_id, endpoint, p256dh, auth)
   values (v_uid, p_endpoint, p_p256dh, p_auth)
   on conflict (endpoint) do update
@@ -347,12 +356,20 @@ security definer
 set search_path = public, extensions
 as $$
 declare
-  v_url text := (select c.value from public.aqua_push_config c where c.key = 'flush_url');
-  v_secret text := (select c.value from public.aqua_push_config c where c.key = 'flush_secret');
+  v_url text;
+  v_secret text;
 begin
+  -- 한 트랜잭션에 한 번만 부른다(발송 API는 커밋 뒤 대기열 전부를 가져가므로 충분하다)
+  if current_setting('aqua.push_kicked', true) = '1' then
+    return null;
+  end if;
+  -- 설정 읽기도 아래 exception 안에서(선언부에서 읽으면 오류가 잡히지 않는다)
+  select c.value into v_url from public.aqua_push_config c where c.key = 'flush_url';
+  select c.value into v_secret from public.aqua_push_config c where c.key = 'flush_secret';
   if v_url is null or v_url !~ '^https://' or coalesce(v_secret, '') = '' then
     return null;
   end if;
+  perform set_config('aqua.push_kicked', '1', true);
   perform net.http_post(
     url := v_url,
     body := '{}'::jsonb,
@@ -389,11 +406,19 @@ declare
   v_id uuid;
   v_title text := left(btrim(coalesce(p_title, '')), 80);
   v_body text := left(btrim(coalesce(p_body, '')), 300);
+  -- 잠금 화면에 뜨는 푸시는 최소한만: 서류·계정 조치·공고 숨김·마감은 종류·사유 없이 일반 문구
+  -- (제목 ''은 발송 API가 브랜드 이름(lib/brand.ts)으로 채운다). 나머지는 센터명·공고 제목까지(앱 안 알림과 같음).
+  v_generic boolean := p_kind in ('doc_verified', 'doc_rejected', 'doc_expiring',
+                                  'account_suspended', 'account_banned', 'job_hidden', 'application_closed');
+  v_push_title text;
+  v_push_body text;
 begin
   select p.account_status into v_status from public.profiles p where p.id = p_user;
   if not found then
     return null;
   end if;
+  v_push_title := case when v_generic then '' else v_title end;
+  v_push_body := case when v_generic then '앱에서 확인해 주세요' else v_body end;
 
   insert into public.aqua_notifications (user_id, kind, title, body, link)
   values (p_user, p_kind, v_title, v_body, p_link)
@@ -403,7 +428,7 @@ begin
   if (v_status = 'active' or p_kind in ('account_suspended', 'account_banned'))
      and exists (select 1 from public.aqua_push_subscriptions s where s.user_id = p_user) then
     insert into public.aqua_push_outbox (notification_id, subscription_id, title, body, link)
-    select v_id, s.id, v_title, v_body, coalesce(p_link, '/')
+    select v_id, s.id, v_push_title, v_push_body, coalesce(p_link, '/')
     from public.aqua_push_subscriptions s
     where s.user_id = p_user;
   end if;
@@ -469,7 +494,7 @@ revoke execute on function public.aqua_action_reason_text() from public, anon, a
 -- ---------------------------------------------------------------------
 -- 5. 트리거: 사건 → 알림
 --    링크 규칙(앱 안 주소, Task 6 화면이 읽는다):
---      /?tab=applicants&job=<공고>   센터 — 새 지원자, 제안 수락·거절
+--      /?tab=applicants&job=<공고>[&app=<지원>]  센터 — 새 지원자(app 포함), 제안 수락·거절
 --      /?tab=applications&job=<공고> 강사 — 선택됨, 마감(미선택)
 --      /?tab=offers&offer=<제안>     강사 — 제안 도착, 제안 마감
 --      /?tab=documents               서류 확인·반려·만료 임박
@@ -494,9 +519,18 @@ begin
     end if;
 
     if new.status = 'applied' and (tg_op = 'INSERT' or old.status = 'withdrawn') then
-      perform public.aqua_notify(v_job.owner_id, 'application_new',
-        '새 지원자가 있어요', left(v_job.title, 60),
-        '/?tab=applicants&job=' || v_job.id);
+      -- 지원 취소·재지원을 반복해도 센터에는 같은 지원(공고·강사 = 지원 행) 알림을 24시간에 한 번만
+      if not exists (
+        select 1 from public.aqua_notifications n
+        where n.user_id = v_job.owner_id
+          and n.kind = 'application_new'
+          and n.link = '/?tab=applicants&job=' || v_job.id || '&app=' || new.id
+          and n.created_at > now() - interval '24 hours'
+      ) then
+        perform public.aqua_notify(v_job.owner_id, 'application_new',
+          '새 지원자가 있어요', left(v_job.title, 60),
+          '/?tab=applicants&job=' || v_job.id || '&app=' || new.id);
+      end if;
     elsif tg_op = 'UPDATE' and new.status is distinct from old.status then
       if new.status = 'selected' then
         perform public.aqua_notify(new.instructor_id, 'application_selected',
@@ -705,17 +739,22 @@ begin
       and (public.effective_doc(d.owner_id, d.doc_type)).id = d.id
     order by d.id
   loop
-    insert into public.aqua_doc_expiry_notices (doc_id, notice_day)
-    values (r.id, v_today)
-    on conflict do nothing;
-    if found then
-      perform public.aqua_notify(r.owner_id, 'doc_expiring',
-        public.aqua_doc_label(r.doc_type)
-          || case when r.valid_until = v_today then ' 유효기간이 오늘까지예요' else ' 유효기간이 30일 남았어요' end,
-        '새 서류를 올리면 확인 뒤 반영돼요',
-        '/?tab=documents');
-      v_n := v_n + 1;
-    end if;
+    -- 한 건이 실패해도 나머지는 계속한다. 실패한 건은 기록도 함께 되돌아가 같은 날 다시 돌리면 다시 시도한다.
+    begin
+      insert into public.aqua_doc_expiry_notices (doc_id, notice_day)
+      values (r.id, v_today)
+      on conflict do nothing;
+      if found then
+        perform public.aqua_notify(r.owner_id, 'doc_expiring',
+          public.aqua_doc_label(r.doc_type)
+            || case when r.valid_until = v_today then ' 유효기간이 오늘까지예요' else ' 유효기간이 30일 남았어요' end,
+          '새 서류를 올리면 확인 뒤 반영돼요',
+          '/?tab=documents');
+        v_n := v_n + 1;
+      end if;
+    exception when others then
+      raise warning 'aqua 서류 만료 알림 실패: %', sqlerrm;
+    end;
   end loop;
   return v_n;
 end;
@@ -746,13 +785,15 @@ begin
     raise notice 'pg_cron 확장을 켤 수 없음: % (Database → Extensions에서 pg_cron을 켠 뒤 이 파일을 다시 실행)', sqlerrm;
   end;
   if exists (select 1 from pg_extension where extname = 'pg_cron') then
-    if not exists (select 1 from cron.job where jobname = 'aqua-daily-notify') then
-      perform cron.schedule(
-        'aqua-daily-notify',
-        '0 0 * * *',
-        'select public.aqua_notify_expiring_docs(); select public.aqua_push_outbox_cleanup();'
-      );
+    -- 다시 실행하면 지우고 새로 예약(시각·명령을 고친 것이 반영되게)
+    if exists (select 1 from cron.job where jobname = 'aqua-daily-notify') then
+      perform cron.unschedule('aqua-daily-notify');
     end if;
+    perform cron.schedule(
+      'aqua-daily-notify',
+      '0 0 * * *',
+      'select public.aqua_notify_expiring_docs(); select public.aqua_push_outbox_cleanup();'
+    );
   end if;
 exception when others then
   raise notice '서류 만료 알림 예약 실패: % (pg_cron을 켠 뒤 이 파일을 다시 실행)', sqlerrm;

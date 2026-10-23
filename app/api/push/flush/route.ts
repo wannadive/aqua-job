@@ -94,14 +94,18 @@ export async function POST(req: Request) {
     );
 
     if (gone.size) {
-      await (db.from("aqua_push_subscriptions") as any).delete().in("id", Array.from(gone));
-      removed += gone.size;
+      const { error: delError, count } = await (db.from("aqua_push_subscriptions") as any)
+        .delete({ count: "exact" })
+        .in("id", Array.from(gone));
+      if (delError) console.error(`[push-flush] failed to remove ${gone.size} ended subscription(s)`);
+      else removed += count ?? 0;
     }
     const alive = Array.from(ok).filter((id) => !gone.has(id));
     if (alive.length) {
-      await (db.from("aqua_push_subscriptions") as any)
+      const { error: updError } = await (db.from("aqua_push_subscriptions") as any)
         .update({ last_used_at: new Date().toISOString() })
         .in("id", alive);
+      if (updError) console.error(`[push-flush] failed to touch ${alive.length} subscription(s)`);
     }
     if (rows.length < BATCH) break;
   }

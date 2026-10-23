@@ -15,7 +15,7 @@ begin;
 --   C1 = fa000000-0000-4000-8000-0000000000c1 (센터 '알림센터1', 사업자등록증 확인 — 공고 주인)
 --   C2 = fa000000-0000-4000-8000-0000000000c2 (센터 '알림센터2' — 만료 당일 서류, 기기 10대 제한)
 --   I1 = fa000000-0000-4000-8000-0000000000a1 (강사, 공개 이력서, 푸시 기기 1대)
---   I2 = fa000000-0000-4000-8000-0000000000a2 (강사, 공개 이력서)
+--   I2 = fa000000-0000-4000-8000-0000000000a2 (강사, 공개 이력서, 푸시 기기 1대)
 --   A  = fa000000-0000-4000-8000-0000000000d1 (관리자)
 -- ---------------------------------------------------------------------
 
@@ -71,8 +71,9 @@ insert into public.verification_documents (id, owner_id, doc_type, file_path, me
   ('fad00000-0000-4000-8000-0000000000a2', 'fa000000-0000-4000-8000-0000000000a2',
    'instructor_cert', 'fa000000-0000-4000-8000-0000000000a2/cert-secret.jpg', '{"org":"AIDA"}', now() - interval '1 day');
 
--- 서류 확인 · 공고 준비 · I1 기기 등록
---   p3n.j1 (지원 → 선택)  p3n.j2 (제안 → 거절)  p3n.j3 (제안 → 수락)  p3n.j4 (지원 · 제안 → 직접 마감)
+-- 서류 확인 · 공고 준비 · I1·I2 기기 등록
+--   p3n.j1 (지원 → 선택)  p3n.j2 (제안 → 거절 → 숨김)  p3n.j3 (제안 → 수락)  p3n.j4 (지원 · 제안 → 직접 마감)
+--   p3n.j5 (지원·취소 반복)  p3n.j6 (알림 실패를 일부러 낸 지원)
 do $$
 declare
   v_today date := (now() at time zone 'Asia/Seoul')::date;
@@ -91,7 +92,7 @@ begin
 
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'fa000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
-  foreach v_key in array array['j1', 'j2', 'j3', 'j4'] loop
+  foreach v_key in array array['j1', 'j2', 'j3', 'j4', 'j5', 'j6'] loop
     v_id := public.create_job_post(jsonb_build_object(
       'job_type', 'lesson', 'title', '알림 공고 ' || v_key, 'region', '서울',
       'class_date', v_today + 10, 'headcount', 1, 'description', '알림 설명', 'deadline', v_today + 9));
@@ -102,6 +103,10 @@ begin
     json_build_object('sub', 'fa000000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
   perform public.aqua_save_push_subscription(
     'https://fcm.googleapis.com/fcm/send/p3n-i1-device', repeat('A', 87), repeat('B', 22));
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'fa000000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
+  perform public.aqua_save_push_subscription(
+    'https://fcm.googleapis.com/fcm/send/p3n-i2-device', repeat('A', 87), repeat('B', 22));
   reset role;
 
   perform set_config('p3n.sub_i1',
@@ -114,7 +119,8 @@ end $$;
 --   지원 → 센터(새 지원자) · 선택 → 강사('알림센터1에서 선택했어요') + 그 강사 기기로 대기열
 --   제안 → 강사 · 거절/수락 → 센터 · 직접 마감 → 남은 지원자(마감)·남은 제안(마감)
 --   서류 확인 → 주인 · 서류 반려 → 주인(사유 포함, 파일 경로 없음) · 계정 정지 → 당사자(사유 포함)
---   알림 문구에 연락처 없음
+--   공고 숨김 → 주인(사유 포함). 잠금 화면 푸시(대기열)는 서류·계정 알림에 종류·사유 없이 일반 문구만.
+--   정지 계정: 앱 안 알림은 쌓이지만 푸시 대기열은 계정 알림만. 알림 문구에 연락처 없음
 -- ---------------------------------------------------------------------
 do $$
 declare
@@ -129,6 +135,7 @@ declare
   v_offer4 uuid;
   n int;
   v_body text;
+  v_nid uuid;
 begin
   -- 서류 확인(준비 단계) → C1
   select count(*) into n from public.aqua_notifications
@@ -142,7 +149,7 @@ begin
   reset role;
   select count(*) into n from public.aqua_notifications
     where user_id = c1 and kind = 'application_new' and title = '새 지원자가 있어요'
-      and body = '알림 공고 j1' and link = '/?tab=applicants&job=' || v_j1 and read_at is null;
+      and body = '알림 공고 j1' and link = '/?tab=applicants&job=' || v_j1 || '&app=' || v_app and read_at is null;
   if n <> 1 then raise exception 'triggers_fire 실패 (새 지원자 알림 %건)', n; end if;
 
   -- 선택 → 강사 + 기기 대기열
@@ -183,6 +190,15 @@ begin
     where user_id = c1 and kind = 'offer_declined' and body = '알림 공고 j2';
   if n <> 1 then raise exception 'triggers_fire 실패 (제안 거절 알림 %건)', n; end if;
 
+  -- 공고 숨김(관리자 조치 자리) → 주인, 사유 포함
+  perform set_config('aqua.action_reason', '허위 공고', true);
+  update public.job_posts set status = 'hidden' where id = current_setting('p3n.j2')::uuid;
+  perform set_config('aqua.action_reason', '', true);
+  select count(*) into n from public.aqua_notifications
+    where user_id = c1 and kind = 'job_hidden' and body = '알림 공고 j2 · 사유: 허위 공고'
+      and link = '/?tab=jobs&job=' || current_setting('p3n.j2');
+  if n <> 1 then raise exception 'triggers_fire 실패 (공고 숨김 알림 %건)', n; end if;
+
   -- 제안 → 수락 → 센터
   set local role authenticated;
   perform set_config('request.jwt.claims', json_build_object('sub', c1, 'role', 'authenticated')::text, true);
@@ -219,12 +235,31 @@ begin
   if v_body is distinct from '강사 자격증 · 사유: 사진 흐림' then
     raise exception 'triggers_fire 실패 (서류 반려 본문 %)', v_body;
   end if;
+  -- 잠금 화면 푸시: 종류·사유 없이 일반 문구(제목은 비워 두고 발송 API가 브랜드 이름으로 채움)
+  select count(*) into n from public.aqua_push_outbox o
+    join public.aqua_notifications a on a.id = o.notification_id
+    where a.user_id = i2 and a.kind = 'doc_rejected'
+      and o.title = '' and o.body = '앱에서 확인해 주세요'
+      and (o.title || o.body) !~ '(사진|흐림|자격증|서류)';
+  if n <> 1 then raise exception 'triggers_fire 실패 (서류 반려 푸시 문구 %건)', n; end if;
 
   -- 계정 정지 → 당사자 (관리자 조치 사유)
   perform set_config('aqua.action_reason', '허위 공고', true);
   update public.profiles set account_status = 'suspended' where id = i2;
   perform set_config('aqua.action_reason', '', true);
+  -- 정지 중 다른 알림: 앱 안에는 쌓이지만 푸시 대기열에는 안 들어간다
+  v_nid := public.aqua_notify(i2, 'offer_new', '정지 중 알림', '공고', '/');
+  select count(*) into n from public.aqua_notifications where id = v_nid;
+  if n <> 1 then raise exception 'triggers_fire 실패 (정지 계정 앱 안 알림 %건)', n; end if;
+  select count(*) into n from public.aqua_push_outbox where notification_id = v_nid;
+  if n <> 0 then raise exception 'triggers_fire 실패 (정지 계정 푸시 대기열 %건)', n; end if;
   update public.profiles set account_status = 'active' where id = i2;
+  -- 계정 정지 푸시: 당사자 기기로 가되 사유 없이 일반 문구
+  select count(*) into n from public.aqua_push_outbox o
+    join public.aqua_notifications a on a.id = o.notification_id
+    where a.user_id = i2 and a.kind = 'account_suspended'
+      and o.title = '' and o.body = '앱에서 확인해 주세요' and o.body !~ '(허위|사유)';
+  if n <> 1 then raise exception 'triggers_fire 실패 (계정 정지 푸시 문구 %건)', n; end if;
   select count(*) into n from public.aqua_notifications
     where user_id = i2 and kind = 'account_suspended' and body = '사유: 허위 공고' and link = '/';
   if n <> 1 then raise exception 'triggers_fire 실패 (계정 정지 알림 %건)', n; end if;
@@ -238,6 +273,59 @@ begin
     where user_id in (c1, i1, i2) and (link is null or left(link, 1) <> '/' or left(link, 2) = '//');
   if n <> 0 then raise exception 'triggers_fire 실패 (앱 밖 링크 %건)', n; end if;
 end $$;
+
+-- ---------------------------------------------------------------------
+-- reapply_notify_throttled: 지원 → 취소 → 지원 → 취소 → 지원을 해도 센터의 새 지원자 알림은 24시간에 한 번
+-- ---------------------------------------------------------------------
+do $
+declare
+  v_app uuid;
+  v_app2 uuid;
+  k int;
+  n int;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'fa000000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
+  v_app := public.apply_to_job(current_setting('p3n.j5')::uuid, null);
+  for k in 1..2 loop
+    perform public.withdraw_application(v_app);
+    v_app2 := public.apply_to_job(current_setting('p3n.j5')::uuid, null);
+    if v_app2 <> v_app then raise exception 'reapply_notify_throttled 실패 (재지원 행이 다름)'; end if;
+  end loop;
+  reset role;
+  select count(*) into n from public.aqua_notifications
+    where user_id = 'fa000000-0000-4000-8000-0000000000c1' and kind = 'application_new'
+      and link = '/?tab=applicants&job=' || current_setting('p3n.j5') || '&app=' || v_app;
+  if n <> 1 then raise exception 'reapply_notify_throttled 실패 (센터 알림 %건)', n; end if;
+end $;
+
+-- ---------------------------------------------------------------------
+-- notify_failure_does_not_block: 알림 쓰기가 실패해도(검사용 제약을 잠깐 걸어 새 지원자 알림을 일부러 거부)
+--   지원은 그대로 저장되고 알림만 빠진다(트리거가 경고만 남김). 제약은 바로 지운다(트랜잭션도 되돌림).
+-- ---------------------------------------------------------------------
+do $
+declare
+  v_app uuid;
+  n int;
+begin
+  alter table public.aqua_notifications
+    add constraint p3n_inject_fail check (kind <> 'application_new') not valid;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'fa000000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
+  v_app := public.apply_to_job(current_setting('p3n.j6')::uuid, '실패 주입');
+  reset role;
+
+  alter table public.aqua_notifications drop constraint p3n_inject_fail;
+
+  select count(*) into n from public.job_applications where id = v_app and status = 'applied';
+  if n <> 1 then raise exception 'notify_failure_does_not_block 실패 (지원이 저장되지 않음)'; end if;
+  select count(*) into n from public.aqua_notifications
+    where kind = 'application_new' and link like '/?tab=applicants&job=' || current_setting('p3n.j6') || '%';
+  if n <> 0 then raise exception 'notify_failure_does_not_block 실패 (실패해야 할 알림 %건)', n; end if;
+end $;
 
 -- ---------------------------------------------------------------------
 -- notifications_own_only:
@@ -485,6 +573,23 @@ begin
 
   select count(*) into n from public.aqua_push_subscriptions where user_id = i1;
   if n <> 1 then raise exception 'push_subscription_own_only 실패 (I1 구독이 바뀜 %건)', n; end if;
+
+  -- 기기 넘겨받기: C1이 I1의 기기 주소를 저장하면 I1 앞으로 쌓인 안 보낸 푸시는 지워진다(C1에게 가지 않게)
+  perform public.aqua_notify(i1, 'offer_new', '넘겨받기 전 알림', '공고', '/');
+  select count(*) into n from public.aqua_push_outbox
+    where subscription_id = current_setting('p3n.sub_i1')::uuid and sent_at is null;
+  if n = 0 then raise exception 'push_subscription_own_only 실패 (넘겨받기 준비: I1 대기열 없음)'; end if;
+  set local role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', c1, 'role', 'authenticated')::text, true);
+  perform public.aqua_save_push_subscription(
+    'https://fcm.googleapis.com/fcm/send/p3n-i1-device', repeat('C', 87), repeat('D', 22));
+  reset role;
+  select count(*) into n from public.aqua_push_outbox
+    where subscription_id = current_setting('p3n.sub_i1')::uuid and sent_at is null;
+  if n <> 0 then raise exception 'push_subscription_own_only 실패 (넘겨받은 기기에 이전 계정 푸시 %건)', n; end if;
+  select count(*) into n from public.aqua_push_subscriptions
+    where id = current_setting('p3n.sub_i1')::uuid and user_id = c1;
+  if n <> 1 then raise exception 'push_subscription_own_only 실패 (기기 주인이 바뀌지 않음)'; end if;
 
   -- 비로그인 저장 불가
   set local role anon;
