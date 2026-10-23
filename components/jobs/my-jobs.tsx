@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { closeJob } from "@/lib/jobs/api";
+import { filledCount } from "@/lib/offers/logic";
 import type { JobSummary } from "@/lib/jobs/types";
 import { JobCard } from "./job-card";
 import type { ApplicantCounts } from "./use-my-jobs";
@@ -92,7 +93,7 @@ export function MyJobs({
       {list.map((job) => {
         const c = counts.get(job.id) ?? { applied: 0, selected: 0, total: 0 };
         return (
-          <JobCard key={job.id} job={job} showStatus extra={`${c.total}명 지원 · 선택 ${c.selected}/${job.headcount}`}>
+          <JobCard key={job.id} job={job} showStatus extra={`${c.total}명 지원 · 선택·수락 ${filledCount(job)}/${job.headcount}`}>
             <div className="grid grid-cols-2 gap-2">
               <Button variant="outline" className="h-11 border-line text-base" onClick={() => onApplicants(job)}>
                 지원자 보기{c.applied > 0 ? ` (${c.applied})` : ""}

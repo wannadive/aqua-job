@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Briefcase, Home, Search, Settings, Users } from "lucide-react";
-import { toast } from "sonner";
 import { DocumentList } from "@/components/verification/document-list";
 import { Applicants } from "@/components/jobs/applicants";
 import { JobForm } from "@/components/jobs/job-form";
@@ -14,6 +13,9 @@ import { fetchMyDocuments } from "@/lib/verification/api";
 import { displayStatus, latestByType, todayKst } from "@/lib/verification/logic";
 import type { DocDisplayStatus } from "@/lib/verification/types";
 import { CenterProfileForm } from "@/components/center-listing/center-profile-form";
+import { InstructorFinder } from "@/components/offers/instructor-finder";
+import { useSentOffers } from "@/components/offers/use-offers";
+import { filledCount } from "@/lib/offers/logic";
 
 type Tab = "home" | "jobs" | "applicants" | "instructors" | "settings";
 
@@ -25,22 +27,15 @@ const TABS: { key: Tab; label: string; icon: typeof Home }[] = [
   { key: "settings", label: "설정", icon: Settings },
 ];
 
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div className="flex min-h-[60dvh] flex-col items-center justify-center text-center">
-      <h1 className="text-2xl font-bold text-ink">{title}</h1>
-      <p className="mt-2 text-sm text-muted">곧 열려요</p>
-    </div>
-  );
-}
-
 function HomeTab({
   onSubmitDocs,
   onNewJob,
+  onFindInstructors,
   stats,
 }: {
   onSubmitDocs: () => void;
   onNewJob: () => void;
+  onFindInstructors: () => void;
   stats: { open: number; applied: number; total: number } | null;
 }) {
   const { user, logout } = useAuth();
@@ -85,7 +80,6 @@ function HomeTab({
     expired: "다시 올리기",
   };
 
-  const soon = () => toast("곧 열려요");
   const statCards: [string, number | null][] = [
     ["진행중 공고", stats?.open ?? null],
     ["대기 지원자", stats?.applied ?? null],
@@ -138,7 +132,7 @@ function HomeTab({
           <button type="button" onClick={onNewJob} className="flex min-h-[72px] flex-col items-center justify-center gap-1 rounded-xl bg-surface text-sm font-semibold text-ink">
             <Briefcase className="size-5" /> 공고 등록
           </button>
-          <button type="button" onClick={soon} className="flex min-h-[72px] flex-col items-center justify-center gap-1 rounded-xl bg-surface text-sm font-semibold text-ink">
+          <button type="button" onClick={onFindInstructors} className="flex min-h-[72px] flex-col items-center justify-center gap-1 rounded-xl bg-surface text-sm font-semibold text-ink">
             <Search className="size-5" /> 강사 찾기
           </button>
         </div>
@@ -171,6 +165,14 @@ export function CenterShell() {
   const changeApplicantJob = useCallback((id: string | null) => setApplicantJob(id), []);
   const my = useMyJobs();
   const stats = my.loading || my.error ? null : summarize(my.jobs, my.counts);
+  const sent = useSentOffers(
+    my.jobs.map((j) => j.id),
+    !my.loading && !my.error,
+  );
+  const reloadJobs = my.reload;
+  const reloadOffers = sent.reload;
+  const reloadBoth = useCallback(() => Promise.all([reloadJobs(), reloadOffers()]), [reloadJobs, reloadOffers]);
+  const editJob = overlay?.kind === "edit" ? my.jobs.find((j) => j.id === overlay.jobId) : undefined;
 
   if (overlay) {
     return (
@@ -180,7 +182,7 @@ export function CenterShell() {
             editJobId={overlay.kind === "edit" ? overlay.jobId : null}
             onClose={() => setOverlay(null)}
             onSaved={my.reload}
-            selectedCount={overlay.kind === "edit" ? (my.counts.get(overlay.jobId)?.selected ?? 0) : 0}
+            selectedCount={editJob ? filledCount(editJob) : 0}
             onSubmitDocs={() => {
               setOverlay(null);
               setTab("settings");
@@ -195,7 +197,12 @@ export function CenterShell() {
     <div className="mx-auto min-h-app w-full max-w-md">
       <main className="px-5 pb-28 pt-8">
         {tab === "home" && (
-          <HomeTab onSubmitDocs={() => setTab("settings")} onNewJob={() => setOverlay({ kind: "new" })} stats={stats} />
+          <HomeTab
+            onSubmitDocs={() => setTab("settings")}
+            onNewJob={() => setOverlay({ kind: "new" })}
+            onFindInstructors={() => setTab("instructors")}
+            stats={stats}
+          />
         )}
         {tab === "jobs" && (
           <MyJobs
@@ -221,10 +228,30 @@ export function CenterShell() {
             onRetryJobs={() => void my.reload()}
             jobFilter={applicantJob}
             onJobFilterChange={changeApplicantJob}
-            onChanged={my.reload}
+            onChanged={reloadBoth}
+            acceptedOffers={sent.offers.filter((o) => o.status === "accepted")}
+            offersError={sent.error && !my.loading && !my.error}
+            onRetryOffers={() => void sent.reload()}
           />
         )}
-        {tab === "instructors" && <ComingSoon title="강사 찾기" />}
+        {tab === "instructors" && (
+          <InstructorFinder
+            jobs={my.jobs}
+            jobsLoading={my.loading}
+            jobsError={my.error}
+            onRetryJobs={() => void my.reload()}
+            offers={sent.offers}
+            offersLoading={sent.loading}
+            offersError={sent.error}
+            reloadOffers={reloadOffers}
+            reloadJobs={reloadJobs}
+            onNewJob={() => setOverlay({ kind: "new" })}
+            onApplicants={(jobId) => {
+              setApplicantJob(jobId);
+              setTab("applicants");
+            }}
+          />
+        )}
         {tab === "settings" && <SettingsTab />}
       </main>
       <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-white pb-[env(safe-area-inset-bottom)]">

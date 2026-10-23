@@ -5,7 +5,9 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { listApplicantsForJobs, selectApplicant } from "@/lib/jobs/api";
-import { canSelect, filterApplicants, formatAppliedAt, isJobFull, selectedCountFor } from "@/lib/jobs/applicants";
+import { canSelect, filterApplicants, formatAppliedAt } from "@/lib/jobs/applicants";
+import { filledCount } from "@/lib/offers/logic";
+import type { Offer } from "@/lib/offers/types";
 import { sortOpenFirst } from "@/lib/jobs/logic";
 import type { JobApplication, JobSummary } from "@/lib/jobs/types";
 import { ApplicantContact } from "./applicant-contact";
@@ -19,8 +21,9 @@ const CHIP: Record<JobApplication["status"], { label: string; cls: string }> = {
 };
 
 /**
- * 센터 지원자 탭: 내 모든 공고의 지원자 + 공고 필터 칩.
- * 연락처는 선택된 지원자 카드에서 [연락처 보기]를 누르거나 방금 선택했을 때만 ApplicantContact가 불러온다(미리 불러오지 않음).
+ * 센터 지원자 탭: 내 모든 공고의 지원자 + 제안을 수락한 강사("제안 수락") + 공고 필터 칩.
+ * 연락처는 선택된 지원자·제안 수락 강사 카드에서 [연락처 보기]를 누르거나 방금 선택했을 때만 ApplicantContact가 불러온다(미리 불러오지 않음).
+ * 채운 인원(선택 + 수락한 제안)은 서버 요약의 남은 자리로 본다(filledCount).
  */
 export function Applicants({
   jobs,
@@ -30,6 +33,9 @@ export function Applicants({
   jobFilter,
   onJobFilterChange,
   onChanged,
+  acceptedOffers = [],
+  offersError = false,
+  onRetryOffers,
 }: {
   jobs: JobSummary[];
   jobsLoading: boolean;
@@ -38,8 +44,12 @@ export function Applicants({
   /** null = 전체 */
   jobFilter: string | null;
   onJobFilterChange: (jobId: string | null) => void;
-  /** 선택 뒤 공고·현황 숫자 다시 불러오기 */
-  onChanged: () => Promise<void> | void;
+  /** 선택 뒤 공고·현황 숫자(·제안) 다시 불러오기 */
+  onChanged: () => Promise<unknown> | void;
+  /** 내 공고로 보낸 제안 중 수락된 것(009) */
+  acceptedOffers?: Offer[];
+  offersError?: boolean;
+  onRetryOffers?: () => void;
 }) {
   const [apps, setApps] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +93,8 @@ export function Applicants({
 
   // 지원 취소는 서버(RLS)가 주지 않는다(007). 화면도 한 번 더 거른다.
   const visible = filterApplicants(apps, { jobId: jobFilter });
+  const visibleOffers = acceptedOffers.filter((o) => o.status === "accepted" && (jobFilter === null || o.jobId === jobFilter));
+  const filteredJob = jobFilter ? jobById.get(jobFilter) : undefined;
 
   const doSelect = async () => {
     const target = selecting;
@@ -101,9 +113,11 @@ export function Applicants({
       setSelecting(null);
       toast.success("선택했어요. 연락처가 열렸어요");
       setContactOpen((s) => new Set(s).add(target.id));
-      const [list] = await Promise.all([reload(), onChanged()]);
+      // 서버는 (선택 + 수락한 제안)이 인원에 닿으면 같은 처리 안에서 마감한다 — 누르기 전 숫자로 안내
       const job = jobById.get(target.jobId);
-      if (list && job && isJobFull(job, selectedCountFor(list, target.jobId))) {
+      const filledNow = job ? filledCount(job) + 1 : 0;
+      await Promise.all([reload(), onChanged()]);
+      if (job && filledNow >= job.headcount) {
         toast("모집 인원이 다 차서 공고가 마감됐어요");
       }
     } finally {
@@ -155,7 +169,79 @@ export function Applicants({
           </button>
         </div>
       )}
-      {!listLoading && !jobsError && !error && visible.length === 0 && (
+      {filteredJob && (
+        <p className="text-sm font-semibold text-ink">
+          선택·수락 {filledCount(filteredJob)}/{filteredJob.headcount}명
+        </p>
+      )}
+      {offersError && (
+        <div className="flex items-center justify-between gap-3 rounded-card bg-white p-4 text-sm text-muted shadow-sm">
+          제안을 수락한 강사를 불러오지 못했어요
+          {onRetryOffers && (
+            <button type="button" onClick={onRetryOffers} className="font-semibold text-ink underline">
+              다시 시도
+            </button>
+          )}
+        </div>
+      )}
+
+      {!listLoading &&
+        !jobsError &&
+        visibleOffers.map((o) => {
+          const job = jobById.get(o.jobId);
+          const key = `o:${o.id}`;
+          const showContact = contactOpen.has(key);
+          return (
+            <article key={key} className="rounded-card bg-white p-5 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="truncate text-lg font-bold text-ink">{o.instructorName ?? "강사"}</h2>
+                  <p className="truncate text-sm text-muted">{job?.title ?? "공고"}</p>
+                </div>
+                <span className="shrink-0 rounded-full bg-ok-bg px-2.5 py-1 text-xs font-semibold text-ok">제안 수락</span>
+              </div>
+              {o.message && (
+                <p className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-surface p-3 text-sm text-ink">
+                  <span className="block text-xs font-semibold text-muted">보낸 한마디</span>
+                  {o.message}
+                </p>
+              )}
+              <p className="mt-2 text-xs text-muted">{formatAppliedAt(o.respondedAt ?? o.createdAt)} 수락</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  className="h-11 border-line text-base"
+                  onClick={() => {
+                    setContactOpen(new Set());
+                    setResumeOf({
+                      id: key,
+                      jobId: o.jobId,
+                      instructorId: o.instructorId,
+                      message: null,
+                      status: "selected",
+                      createdAt: o.createdAt,
+                      decidedAt: o.respondedAt,
+                      applicantName: o.instructorName,
+                    });
+                  }}
+                >
+                  이력서 보기
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-11 border-line text-base"
+                  disabled={showContact}
+                  onClick={() => setContactOpen((s) => new Set(s).add(key))}
+                >
+                  연락처 보기
+                </Button>
+              </div>
+              {showContact && <ApplicantContact offerId={o.id} />}
+            </article>
+          );
+        })}
+
+      {!listLoading && !jobsError && !error && visible.length === 0 && visibleOffers.length === 0 && (
         <p className="py-10 text-center text-sm text-muted">{jobs.length === 0 ? "올린 공고가 없어요" : "아직 지원자가 없어요"}</p>
       )}
 
@@ -165,7 +251,7 @@ export function Applicants({
         visible.map((a) => {
           const job = jobById.get(a.jobId);
           const chip = CHIP[a.status];
-          const selectable = canSelect(a, job, selectedCountFor(apps, a.jobId));
+          const selectable = canSelect(a, job, job ? filledCount(job) : 0);
           const showContact = a.status === "selected" && contactOpen.has(a.id);
           return (
             <article key={a.id} className="rounded-card bg-white p-5 shadow-sm">

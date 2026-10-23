@@ -79,7 +79,7 @@ export function AdminJobs() {
             dimmed={r.job.status !== "open"}
             extra={
               <span className="text-xs font-semibold text-ink">
-                {r.applied}명 지원 · 선택 {r.selected}/{r.job.headcount}
+                {r.applied}명 지원 · 선택·수락 {r.selected + r.acceptedOffers}/{r.job.headcount}
               </span>
             }
           />

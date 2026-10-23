@@ -71,6 +71,7 @@ lib/talent-profile/ + components/talent-profile/   강사 이력서 (resume-*)
 lib/center-listing/ + components/center-listing/   센터 소개 (center-profile-form)
 lib/avatar/api.ts                                  아바타 업로드/URL
 lib/notifications/                                 앱 안 알림·푸시 구독 API, 발송 순수 로직(flush.ts) — 화면은 Task 6
+lib/offers/ + components/offers/                   강사 둘러보기·제안(보내기·철회·수락/거절) — 연락처 카드는 components/jobs/applicant-contact 공용
 ```
 
 ### 공용 — 위치 유지 (WD와 같은 경로)

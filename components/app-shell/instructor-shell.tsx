@@ -18,6 +18,8 @@ import { useMyApplications } from "@/components/jobs/use-my-applications";
 import { myApplicationCounts } from "@/lib/jobs/logic";
 import type { JobSummary } from "@/lib/jobs/types";
 import { ResumeEditor } from "@/components/talent-profile/resume-editor";
+import { ReceivedOffers } from "@/components/offers/received-offers";
+import { useReceivedOffers } from "@/components/offers/use-offers";
 
 type Tab = "home" | "jobs" | "offers" | "applications" | "resume";
 
@@ -29,24 +31,21 @@ const TABS: { key: Tab; label: string; icon: typeof Home }[] = [
   { key: "resume", label: "내 이력서", icon: FileText },
 ];
 
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div className="flex min-h-[60dvh] flex-col items-center justify-center text-center">
-      <h1 className="text-2xl font-bold text-ink">{title}</h1>
-      <p className="mt-2 text-sm text-muted">곧 열려요</p>
-    </div>
-  );
-}
-
 function HomeTab({
   onResume,
   counts,
   countsError,
   onRetryCounts,
   onApplications,
+  pendingOffers,
+  onOffers,
 }: {
   onResume: () => void;
+  /** selected = 선택된 지원 + 수락한 제안 */
   counts: { active: number; total: number; selected: number } | null;
+  /** 답을 기다리는 받은 제안 수(모르면 null) */
+  pendingOffers: number | null;
+  onOffers: () => void;
   countsError: boolean;
   onRetryCounts: () => void;
   onApplications: () => void;
@@ -117,6 +116,15 @@ function HomeTab({
 
       <section className="rounded-card bg-white p-5 shadow-sm">
         <h2 className="text-lg font-bold text-ink">내 지원</h2>
+        {pendingOffers != null && pendingOffers > 0 && (
+          <button
+            type="button"
+            onClick={onOffers}
+            className="mt-3 w-full rounded-xl bg-surface py-3 text-center text-sm font-semibold text-ink"
+          >
+            답을 기다리는 제안 {pendingOffers}건
+          </button>
+        )}
         {counts ? (
           <>
             {counts.selected > 0 && (
@@ -125,7 +133,7 @@ function HomeTab({
                 onClick={onApplications}
                 className="mt-3 w-full rounded-xl bg-ok-bg py-3 text-center text-sm font-semibold text-ok"
               >
-                선택됐어요 · {counts.selected}건 확인하기
+                선택·수락 {counts.selected}건 확인하기
               </button>
             )}
             <div className="mt-3 grid grid-cols-2 gap-2 text-center">
@@ -193,7 +201,11 @@ export function InstructorShell() {
   const [applying, setApplying] = useState<JobSummary | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const my = useMyApplications();
-  const counts = my.loading || my.error ? null : myApplicationCounts(my.apps);
+  const rec = useReceivedOffers();
+  const acceptedOffers = rec.offers.filter((o) => o.status === "accepted");
+  const baseCounts = my.loading || my.error ? null : myApplicationCounts(my.apps);
+  const counts = baseCounts && { ...baseCounts, selected: baseCounts.selected + acceptedOffers.length };
+  const pendingOffers = rec.loading || rec.error ? null : rec.offers.filter((o) => o.status === "offered").length;
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   return (
     <div className="mx-auto min-h-app w-full max-w-md">
@@ -205,10 +217,24 @@ export function InstructorShell() {
             countsError={my.error && !my.loading}
             onRetryCounts={() => void my.reload()}
             onApplications={() => setTab("applications")}
+            pendingOffers={pendingOffers}
+            onOffers={() => setTab("offers")}
           />
         )}
         {tab === "jobs" && <JobsBrowser key={openJobId ?? "list"} initialJobId={openJobId} onApply={setApplying} reloadKey={reloadKey} />}
-        {tab === "offers" && <ComingSoon title="제안" />}
+        {tab === "offers" && (
+          <ReceivedOffers
+            offers={rec.offers}
+            loading={rec.loading}
+            error={rec.error && !rec.loading}
+            onRetry={() => void rec.reload()}
+            onOpenJob={(id) => {
+              setOpenJobId(id);
+              setTab("jobs");
+            }}
+            onChanged={rec.reload}
+          />
+        )}
         {tab === "applications" && (
           <MyApplications
             apps={my.apps}
@@ -220,6 +246,7 @@ export function InstructorShell() {
               setTab("jobs");
             }}
             onChanged={my.reload}
+            acceptedOffers={acceptedOffers}
           />
         )}
         {tab === "resume" && (

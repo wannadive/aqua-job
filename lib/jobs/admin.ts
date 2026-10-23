@@ -9,6 +9,8 @@ export interface AdminJobRow {
   /** 취소(withdrawn)를 뺀 지원 수 */
   applied: number;
   selected: number;
+  /** 수락한 제안 수(009) */
+  acceptedOffers: number;
 }
 
 export type AdminJobFilter = "all" | "open" | "closed";
@@ -22,7 +24,13 @@ export function buildAdminJobRows(
   apps: { job_id: string; status: string }[],
   centers: { id: string; name: string | null }[],
   today: string,
+  /** 제안 상태 행(009). 채운 인원 = 선택한 지원 + 수락한 제안(SQL job_filled_count) */
+  offers: { job_id: string; status: string }[] = [],
 ): AdminJobRow[] {
+  const accepted = new Map<string, number>();
+  for (const o of offers) {
+    if (o.status === "accepted") accepted.set(o.job_id, (accepted.get(o.job_id) ?? 0) + 1);
+  }
   const nameById = new Map(centers.map((c) => [c.id, c.name ?? ""]));
   const counts = new Map<string, { applied: number; selected: number }>();
   for (const a of apps) {
@@ -34,6 +42,8 @@ export function buildAdminJobRows(
   }
   const rows = posts.map((p) => {
     const c = counts.get(p.id) ?? { applied: 0, selected: 0 };
+    const acc = accepted.get(p.id) ?? 0;
+    const filled = c.selected + acc;
     const status = jobDisplayStatus(
       {
         storedStatus: p.status,
@@ -43,17 +53,17 @@ export function buildAdminJobRows(
         classDate: p.class_date ?? null,
         tourStart: p.tour_start ?? null,
         headcount: p.headcount,
-        selectedCount: c.selected,
+        selectedCount: filled,
       },
       today,
     );
     const job = jobSummaryFromRow({
       ...p,
       center_name: nameById.get(p.center_id) || "센터",
-      remaining: remainingSlots(p.headcount, c.selected),
+      remaining: remainingSlots(p.headcount, filled),
       effective_status: status,
     });
-    return { job, applied: c.applied, selected: c.selected };
+    return { job, applied: c.applied, selected: c.selected, acceptedOffers: acc };
   });
   return rows.sort((a, b) => (a.job.createdAt < b.job.createdAt ? 1 : a.job.createdAt > b.job.createdAt ? -1 : 0));
 }

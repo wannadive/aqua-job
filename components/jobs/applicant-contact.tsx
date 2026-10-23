@@ -3,23 +3,28 @@
 import { useEffect, useState } from "react";
 import { Mail, Phone } from "lucide-react";
 import { getApplicantContact } from "@/lib/jobs/api";
+import { getOfferContact } from "@/lib/offers/api";
 
 const EMAIL_SHAPE = /^[^\s@<>"',;:\?&#%]+@[^\s@<>"',;:\?&#%]+\.[^\s@<>"',;:\?&#%]+$/;
 
 type State = { kind: "loading" } | { kind: "error" } | { kind: "none" } | { kind: "ok"; phone: string | null; email: string | null };
 
 /**
- * 선택한 지원자의 연락처 카드. 연락처는 get_applicant_contact 결과로만, 이 컴포넌트 state에만 둔다
- * (위로 올리거나 저장·로그하지 않는다). 서버가 공고 주인 + 선택됨 + 양쪽 활성일 때만 돌려준다.
+ * 연락처 카드 — 연락처가 열리는 두 경로(선택 · 제안 수락)가 같이 쓴다.
+ * appId면 get_applicant_contact(선택한 지원자), offerId면 get_offer_contact(제안을 수락한 강사).
+ * 연락처는 이 컴포넌트 state에만 둔다(위로 올리거나 저장·로그하지 않는다).
+ * 서버가 공고 주인 + 선택됨/수락 + 양쪽 활성 + 구독일 때만 돌려준다.
  */
-export function ApplicantContact({ appId }: { appId: string }) {
+export function ApplicantContact(props: { appId: string; offerId?: never } | { offerId: string; appId?: never }) {
+  const appId = props.appId ?? null;
+  const offerId = props.offerId ?? null;
   const [state, setState] = useState<State>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setState({ kind: "loading" });
-    getApplicantContact(appId)
+    (offerId ? getOfferContact(offerId) : getApplicantContact(appId as string))
       .then((c) => {
         if (cancelled) return;
         if (!c || (!c.phone && !c.email)) setState({ kind: "none" });
@@ -31,7 +36,7 @@ export function ApplicantContact({ appId }: { appId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [appId, attempt]);
+  }, [appId, offerId, attempt]);
 
   return (
     <div className="mt-3 rounded-xl bg-ok-bg p-4">
@@ -68,7 +73,9 @@ export function ApplicantContact({ appId }: { appId: string }) {
             ))}
         </div>
       )}
-      <p className="mt-2 text-xs text-muted">이 연락처는 선택한 센터에만 보여요</p>
+      <p className="mt-2 text-xs text-muted">
+        {offerId ? "이 연락처는 제안을 수락받은 센터에만 보여요" : "이 연락처는 선택한 센터에만 보여요"}
+      </p>
     </div>
   );
 }

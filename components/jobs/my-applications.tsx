@@ -7,11 +7,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } f
 import { withdrawApplication } from "@/lib/jobs/api";
 import { applicationGroup, formatMdKst, type ApplicationGroup } from "@/lib/jobs/logic";
 import type { MyApplication } from "@/lib/jobs/types";
+import type { ReceivedOffer } from "@/lib/offers/types";
 import { JobCard } from "./job-card";
 
 const GROUPS: { key: ApplicationGroup; label: string; empty: string }[] = [
   { key: "applied", label: "지원함", empty: "결과를 기다리는 지원이 없어요" },
-  { key: "selected", label: "선택됨", empty: "아직 선택된 지원이 없어요" },
+  { key: "selected", label: "선택·수락", empty: "아직 선택된 지원이나 수락한 제안이 없어요" },
   { key: "closed", label: "마감·미선택", empty: "마감되었거나 선택되지 않은 지원이 없어요" },
   { key: "withdrawn", label: "취소함", empty: "취소한 지원이 없어요" },
 ];
@@ -30,8 +31,11 @@ export function MyApplications({
   onRetry,
   onOpenJob,
   onChanged,
+  acceptedOffers = [],
 }: {
   apps: MyApplication[];
+  /** 수락한 제안(009) — 선택·수락 묶음에 "제안 수락"으로 함께 보인다 */
+  acceptedOffers?: ReceivedOffer[];
   loading: boolean;
   error: boolean;
   onRetry: () => void;
@@ -43,6 +47,9 @@ export function MyApplications({
   const [busy, setBusy] = useState(false);
 
   const grouped = apps.filter((a) => applicationGroup(a) === group);
+  const offersHere = group === "selected" ? acceptedOffers.filter((o) => o.status === "accepted") : [];
+  const groupCount = (k: ApplicationGroup) =>
+    apps.filter((a) => applicationGroup(a) === k).length + (k === "selected" ? acceptedOffers.filter((o) => o.status === "accepted").length : 0);
   const meta = GROUPS.find((g) => g.key === group)!;
 
   const doCancel = async () => {
@@ -78,7 +85,7 @@ export function MyApplications({
             aria-pressed={group === g.key}
             className={`min-h-11 rounded-lg text-sm font-semibold ${group === g.key ? "bg-white text-ink shadow-sm" : "text-muted"}`}
           >
-            {g.label} {apps.filter((a) => applicationGroup(a) === g.key).length}
+            {g.label} {groupCount(g.key)}
           </button>
         ))}
       </div>
@@ -92,7 +99,38 @@ export function MyApplications({
           </button>
         </div>
       )}
-      {!loading && !error && grouped.length === 0 && <p className="py-10 text-center text-sm text-muted">{meta.empty}</p>}
+      {!loading && !error && grouped.length === 0 && offersHere.length === 0 && (
+        <p className="py-10 text-center text-sm text-muted">{meta.empty}</p>
+      )}
+
+      {!loading &&
+        !error &&
+        offersHere.map((o) => {
+          const chipEl = (
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-ok-bg px-2.5 py-1 text-xs font-semibold text-ok">제안 수락</span>
+              <span className="text-xs font-normal text-muted">{formatMdKst(o.respondedAt ?? o.createdAt)} 수락</span>
+            </span>
+          );
+          const note = (
+            <p className="rounded-xl bg-ok-bg p-3 text-sm font-semibold text-ok">
+              {o.job?.centerName ?? "센터"}의 제안을 수락했어요. 이 센터에 내 연락처가 열렸어요
+            </p>
+          );
+          if (!o.job) {
+            return (
+              <article key={`o:${o.id}`} className="rounded-card bg-white p-5 shadow-sm">
+                <div className="text-sm font-semibold">{chipEl}</div>
+                <p className="mt-2 text-sm text-muted">내려간 공고예요</p>
+              </article>
+            );
+          }
+          return (
+            <JobCard key={`o:${o.id}`} job={o.job} onOpen={() => onOpenJob(o.jobId)} extra={chipEl}>
+              {note}
+            </JobCard>
+          );
+        })}
 
       {grouped.map((a) => {
         const chip = CHIP[a.status];
