@@ -1,4 +1,4 @@
-import { DOC_TYPES } from "./config.ts";
+import { DOC_TYPES, LEGACY_VERIFICATION_BUCKET, VERIFICATION_BUCKET } from "./config.ts";
 import type { DocReviewStatus } from "./types.ts";
 
 type ReviewRow = { id: string; ownerId: string; docType: string; status: DocReviewStatus; submittedAt: string };
@@ -80,4 +80,14 @@ export const ROLE_LABEL = { instructor: "강사", center: "센터", admin: "관�
 /** ISO 시각 → 한국 날짜 YYYY.MM.DD */
 export function kstDate(iso: string): string {
   return new Date(new Date(iso).getTime() + 9 * 3600e3).toISOString().slice(0, 10).replaceAll("-", ".");
+}
+
+/**
+ * 서류 행의 bucket 칸 → 원본이 있는 Storage 버킷. 칸이 없으면(006 이전 응답) 옛 버킷,
+ * 알 수 없는 값이면 null(서명 주소·삭제를 하지 않는다).
+ */
+export function docBucket(bucket: unknown): string | null {
+  if (bucket === undefined || bucket === null) return LEGACY_VERIFICATION_BUCKET;
+  if (bucket === VERIFICATION_BUCKET || bucket === LEGACY_VERIFICATION_BUCKET) return bucket;
+  return null;
 }

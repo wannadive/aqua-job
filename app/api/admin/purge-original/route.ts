@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { normalizeRoles } from "@/lib/app-shell/account/logic";
 import type { AccountRole } from "@/lib/app-shell/account/types";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isSuperseded, purgeDecision } from "@/lib/verification/admin-logic";
+import { docBucket, isSuperseded, purgeDecision } from "@/lib/verification/admin-logic";
 import type { DocType } from "@/lib/verification/types";
 
 export const runtime = "nodejs";
@@ -17,8 +17,8 @@ function json(status: number, body: Record<string, unknown>) {
 /**
  * 신분증의 원본 사진을 지운다. 대상: 확인됨·반려됨, 또는 확인 대기지만 같은 사람이 같은 종류를 더 최근에 다시 올려
  * 밀려난 건. "밀려났는지"는 브라우저 말을 믿지 않고 여기서 DB를 보고 판단한다.
- * 요청자의 access token(Authorization: Bearer)으로 활성 관리자인지 확인한 뒤 service role로 Storage 객체를 지우고
- * documents.file_path를 null로 바꾼다. 이미 비어 있으면 그대로 성공(여러 번 불러도 같은 결과).
+ * 요청자의 access token(Authorization: Bearer)으로 활성 관리자인지 확인한 뒤 service role로 그 행의 bucket
+ * (새 서류 verification-docs, 006 이전 서류 documents)에서 Storage 객체를 지우고 verification_documents.file_path를 null로 바꾼다. 이미 비어 있으면 그대로 성공(여러 번 불러도 같은 결과).
  * 응답·로그에 파일 경로나 키를 남기지 않는다.
  */
 export async function POST(req: Request) {
@@ -65,20 +65,20 @@ export async function POST(req: Request) {
     if (typeof docId !== "string" || !UUID_RE.test(docId)) return json(400, { error: "bad_request" });
 
     const { data: row, error: docError } = await sb
-      .from("documents")
-      .select("id, owner_id, status, doc_type, file_path, submitted_at")
+      .from("verification_documents")
+      .select("id, owner_id, status, doc_type, bucket, file_path, submitted_at")
       .eq("id", docId)
       .maybeSingle();
     if (docError) return json(500, { error: "server_error" });
     const doc = row as
-      | { id: string; owner_id: string; status: string; doc_type: string; file_path: string | null; submitted_at: string }
+      | { id: string; owner_id: string; status: string; doc_type: string; bucket: string | null; file_path: string | null; submitted_at: string }
       | null;
 
     // 확인 대기 건이면 같은 사람·같은 종류에 더 최근 제출이 있는지 직접 본다.
     let superseded = false;
     if (doc && doc.status === "submitted") {
       const { data: sibs, error: sibError } = await sb
-        .from("documents")
+        .from("verification_documents")
         .select("id, owner_id, doc_type, submitted_at")
         .eq("owner_id", doc.owner_id)
         .eq("doc_type", doc.doc_type as DocType);
@@ -100,15 +100,20 @@ export async function POST(req: Request) {
     if (decision === "already_purged") return json(200, { ok: true });
 
     const path = doc!.file_path!;
+    const bucket = docBucket(doc!.bucket);
+    if (!bucket) {
+      console.error("[purge-original] unknown bucket");
+      return json(500, { error: "server_error" });
+    }
     // 파일이 이미 없어도 remove는 오류 없이 끝난다 → 그다음 file_path만 비운다.
-    const { error: removeError } = await sb.storage.from("documents").remove([path]);
+    const { error: removeError } = await sb.storage.from(bucket).remove([path]);
     if (removeError) {
       console.error("[purge-original] storage remove failed");
       return json(500, { error: "server_error" });
     }
 
     const { error: updateError } = await (sb as any)
-      .from("documents")
+      .from("verification_documents")
       .update({ file_path: null })
       .eq("id", docId)
       .eq("file_path", path);

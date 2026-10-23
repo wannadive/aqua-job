@@ -106,7 +106,7 @@ export function metaLine(createdAt: string, editedAt: string | null, views: numb
   return parts.join(" · ");
 }
 
-/** 이 종류의 공고를 올리는 데 필요한데 아직 확인되지 않은 서류(requirement_rules 기준) */
+/** 이 종류의 공고를 올리는 데 필요한데 아직 확인되지 않은 서류(verification_requirements 기준) */
 export function missingForJobType(
   verifiedTypes: DocType[],
   rules: RequirementRule[],

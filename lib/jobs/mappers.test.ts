@@ -12,6 +12,7 @@ import { publicFacts } from "../verification/effective.ts";
 const row = {
   id: "j1",
   owner_id: "o1",
+  center_id: "c1",
   center_name: "블루센터",
   job_type: "lesson",
   title: "토요 수업",
@@ -42,6 +43,7 @@ const row = {
 
 test("jobSummaryFromRow", () => {
   const s = jobSummaryFromRow(row);
+  assert.equal(s.centerId, "c1");
   assert.equal(s.centerName, "블루센터");
   assert.equal(s.jobType, "lesson");
   assert.equal(s.startTime, "09:00");
@@ -111,6 +113,7 @@ test("applicationFromRow", () => {
 
 test("centerPublicProfileFromRow: 가려진 칸은 null/빈 배열", () => {
   const c = centerPublicProfileFromRow({
+    center_id: "c1",
     user_id: "o1",
     center_name: "블루센터",
     venues: ["잠실"],
@@ -121,6 +124,8 @@ test("centerPublicProfileFromRow: 가려진 칸은 null/빈 배열", () => {
     representative_name: null,
     instructor_names: null,
   });
+  assert.equal(c.centerId, "c1");
+  assert.equal(c.userId, "o1");
   assert.equal(c.detailVisible, false);
   assert.equal(c.representativeName, null);
   assert.deepEqual(c.instructorNames, []);

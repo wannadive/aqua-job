@@ -65,7 +65,7 @@ export function SupabaseAuthProvider({ children }: { children: ReactNode }) {
       let onboardingDone = true;
       if (roles.includes("instructor")) {
         const { data: ip, error: ipError } = await supabase
-          .from("instructor_profiles")
+          .from("talent_profiles")
           .select("onboarding_done")
           .eq("user_id", userId)
           .maybeSingle();

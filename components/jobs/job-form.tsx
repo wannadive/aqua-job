@@ -173,6 +173,7 @@ export function JobForm({
     return {
       id: "preview",
       ownerId: "",
+      centerId: "",
       centerName: centerName || "내 센터",
       jobType: type,
       title: i.title,

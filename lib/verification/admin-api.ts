@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import { isMissingObjectError, isSuperseded, latestPendingPerOwnerType, PURGE_DOC_TYPES } from "./admin-logic";
+import { docBucket, isMissingObjectError, isSuperseded, latestPendingPerOwnerType, PURGE_DOC_TYPES } from "./admin-logic";
 import { DOC_TYPES } from "./config";
 import { docFromRow } from "./mappers";
 import type { DocRecord } from "./types";
@@ -13,14 +13,14 @@ const DOC_COLUMNS = "id, owner_id, doc_type, status, valid_until, meta, reject_r
 /** 확인 대기 서류(오래된 순). 같은 사람·같은 종류는 가장 최근 제출 건만. 오류는 던진다. */
 export async function fetchReviewQueue(): Promise<ReviewItem[]> {
   const sb = createClient();
-  const pending = await sb.from("documents").select("owner_id").eq("status", "submitted");
+  const pending = await sb.from("verification_documents").select("owner_id").eq("status", "submitted");
   if (pending.error) throw new Error(pending.error.message);
   const ownerIds = [...new Set((pending.data ?? []).map((r: { owner_id: string }) => r.owner_id))];
   if (ownerIds.length === 0) return [];
 
   // 같은 사람의 처리된 건까지 받아야 "더 최근 건이 이미 처리돼 밀려난 대기 건"을 가려낼 수 있다.
   const [docsRes, ownersRes] = await Promise.all([
-    sb.from("documents").select(DOC_COLUMNS).in("owner_id", ownerIds),
+    sb.from("verification_documents").select(DOC_COLUMNS).in("owner_id", ownerIds),
     sb.from("profiles").select("id, display_name").in("id", ownerIds),
   ]);
   if (docsRes.error) throw new Error(docsRes.error.message);
@@ -50,8 +50,8 @@ export type ReviewDetail =
 export async function fetchReviewDetail(docId: string): Promise<ReviewDetail> {
   const sb = createClient();
   const { data: row, error } = await sb
-    .from("documents")
-    .select(`${DOC_COLUMNS}, file_path`)
+    .from("verification_documents")
+    .select(`${DOC_COLUMNS}, bucket, file_path`)
     .eq("id", docId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -60,7 +60,7 @@ export async function fetchReviewDetail(docId: string): Promise<ReviewDetail> {
   if (doc.status !== "submitted") return { state: "processed", doc };
 
   const sameType = await sb
-    .from("documents")
+    .from("verification_documents")
     .select("id, owner_id, doc_type, status, submitted_at")
     .eq("owner_id", doc.ownerId)
     .eq("doc_type", doc.docType);
@@ -70,9 +70,11 @@ export async function fetchReviewDetail(docId: string): Promise<ReviewDetail> {
   );
   if (latest[0]?.id !== doc.id) return { state: "superseded", doc };
 
-  const path = (row as { file_path: string | null }).file_path;
-  if (!path) return { state: "ready", doc, imageUrl: null, fileMissing: true };
-  const signed = await sb.storage.from("documents").createSignedUrl(path, 60);
+  const { bucket: rawBucket, file_path: path } = row as { bucket?: string | null; file_path: string | null };
+  // 006 이전에 올린 서류는 옛 버킷(documents)에 있다 — 행의 bucket 칸을 따른다
+  const bucket = docBucket(rawBucket);
+  if (!path || !bucket) return { state: "ready", doc, imageUrl: null, fileMissing: true };
+  const signed = await sb.storage.from(bucket).createSignedUrl(path, 60);
   if (signed.error) {
     if (isMissingObjectError(signed.error as { message?: string; statusCode?: string | number })) {
       return { state: "ready", doc, imageUrl: null, fileMissing: true };
@@ -171,7 +173,7 @@ type PurgeRow = {
 export async function fetchPendingPurges(): Promise<PendingPurge[]> {
   const sb = createClient();
   const { data, error } = await sb
-    .from("documents")
+    .from("verification_documents")
     .select("id, owner_id, doc_type, status, submitted_at, verified_at")
     .in("doc_type", PURGE_DOC_TYPES)
     .not("file_path", "is", null)
@@ -185,7 +187,7 @@ export async function fetchPendingPurges(): Promise<PendingPurge[]> {
   let siblings: { id: string; ownerId: string; docType: string; submittedAt: string }[] = [];
   if (pendingOwners.length > 0) {
     const sib = await sb
-      .from("documents")
+      .from("verification_documents")
       .select("id, owner_id, doc_type, submitted_at")
       .in("owner_id", pendingOwners)
       .in("doc_type", PURGE_DOC_TYPES);

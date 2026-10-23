@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isMissingObjectError, isSuperseded, kstDate, latestPendingPerOwnerType, PURGE_DOC_TYPES, purgeDecision } from "./admin-logic.ts";
+import { docBucket, isMissingObjectError, isSuperseded, kstDate, latestPendingPerOwnerType, PURGE_DOC_TYPES, purgeDecision } from "./admin-logic.ts";
 
 type Row = { id: string; ownerId: string; docType: string; status: "submitted" | "verified" | "rejected"; submittedAt: string };
 const r = (id: string, ownerId: string, docType: string, status: Row["status"], submittedAt: string): Row => ({ id, ownerId, docType, status, submittedAt });
@@ -90,4 +90,13 @@ test("latestPendingPerOwnerType: 제출 시각이 같으면 id가 큰 쪽을 최
 
 test("PURGE_DOC_TYPES: 신분증 두 종류만", () => {
   assert.deepEqual([...PURGE_DOC_TYPES].sort(), ["id_card", "representative_id"]);
+});
+
+test("docBucket: 새 버킷·옛 버킷만 통과, 칸이 없으면 옛 버킷, 모르는 값은 null", () => {
+  assert.equal(docBucket("verification-docs"), "verification-docs");
+  assert.equal(docBucket("documents"), "documents");
+  assert.equal(docBucket(undefined), "documents");
+  assert.equal(docBucket(null), "documents");
+  assert.equal(docBucket("avatars"), null);
+  assert.equal(docBucket(""), null);
 });

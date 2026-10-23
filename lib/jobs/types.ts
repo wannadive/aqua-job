@@ -10,6 +10,8 @@ export type DestinationKind = "domestic" | "overseas";
 export interface JobSummary {
   id: string;
   ownerId: string;
+  /** centers.id — 센터 공개 프로필·공고 이력은 이 값으로 찾는다 */
+  centerId: string;
   centerName: string;
   jobType: JobType;
   title: string;
@@ -77,6 +79,7 @@ export interface MyApplication extends JobApplication {
 
 export interface CenterJobHistoryItem {
   id: string;
+  centerId: string;
   title: string;
   jobType: JobType;
   payAmount: number | null;
@@ -86,6 +89,9 @@ export interface CenterJobHistoryItem {
 }
 
 export interface CenterPublicProfile {
+  /** centers.id */
+  centerId: string;
+  /** 센터 계정(주인) 회원 id */
   userId: string;
   centerName: string;
   venues: string[];

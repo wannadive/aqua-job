@@ -1,4 +1,4 @@
-// 손으로 쓴 DB 타입 (supabase/migrations/ 001 기반 스키마 + 003 여러 역할 + 005 공고 기준).
+// 손으로 쓴 DB 타입 (supabase/migrations/ 001 기반 스키마 + 003 여러 역할 + 005 공고 + 006 합류 대비 이름·centers 기준).
 // 스키마를 바꾸면 여기도 같이 고친다.
 
 export type Json =
@@ -22,6 +22,11 @@ export type DocTypeValue =
   | "rep_instructor_cert";
 export type DocStatusValue = "submitted" | "verified" | "rejected";
 export type RequirementAction = "post_lesson" | "post_affiliation" | "post_tour" | "send_offer";
+/** 006 서류 원본 버킷: 새 서류 verification-docs, 006 이전 서류 documents */
+export type VerificationBucket = "verification-docs" | "documents";
+/** 006 구독 상품: aquajob(센터 공고·제안) · aquajob_talent(강사 상세·지원) · center_app(센터앱, 예약) */
+export type ProductKey = "aquajob" | "aquajob_talent" | "center_app";
+export type CenterKind = "listing" | "managed";
 
 // 005 공고
 export type JobTypeValue = "lesson" | "affiliation" | "tour";
@@ -38,6 +43,8 @@ export type DestinationKind = "domestic" | "overseas";
 export interface JobSummaryRow {
   id: string;
   owner_id: string;
+  /** centers.id (006) */
+  center_id: string;
   center_name: string;
   job_type: JobTypeValue;
   title: string;
@@ -98,6 +105,9 @@ export interface PublicFactRow {
 
 /** get_center_public_profile: detail_visible=false면 상세 칸은 null */
 export interface CenterPublicProfileRow {
+  /** centers.id (006) */
+  center_id: string;
+  /** 센터 계정(주인) 회원 id */
   user_id: string;
   center_name: string;
   venues: string[];
@@ -115,6 +125,7 @@ export interface CenterPublicProfileRow {
 
 export interface CenterJobHistoryRow {
   id: string;
+  center_id: string;
   title: string;
   job_type: JobTypeValue;
   pay_amount: number | null;
@@ -207,7 +218,7 @@ export interface Database {
         };
         Relationships: [];
       };
-      instructor_profiles: {
+      talent_profiles: {
         Row: {
           user_id: string;
           gender: string | null;
@@ -308,6 +319,8 @@ export interface Database {
           venues: string[];
           address: string | null;
           photo_paths: string[];
+          /** 006: 주인의 centers.id. 트리거가 항상 채운다(넣은 값은 무시) */
+          center_id: string | null;
           updated_at: string;
         };
         Insert: {
@@ -342,12 +355,14 @@ export interface Database {
         };
         Relationships: [];
       };
-      documents: {
+      verification_documents: {
         Row: {
           id: string;
           owner_id: string;
           doc_type: DocTypeValue;
           status: DocStatusValue;
+          /** 원본이 있는 버킷(006). 새 서류는 verification-docs */
+          bucket: VerificationBucket;
           /** 신분증은 확인 후 null */
           file_path: string | null;
           /** YYYY-MM-DD */
@@ -365,6 +380,8 @@ export interface Database {
           owner_id: string;
           doc_type: DocTypeValue;
           status?: "submitted";
+          /** RLS: 새 서류는 verification-docs만 */
+          bucket?: "verification-docs";
           file_path?: string | null;
           meta?: Json;
           submitted_at?: string;
@@ -375,6 +392,7 @@ export interface Database {
           owner_id?: string;
           doc_type?: DocTypeValue;
           status?: DocStatusValue;
+          bucket?: VerificationBucket;
           file_path?: string | null;
           valid_until?: string | null;
           meta?: Json;
@@ -385,7 +403,7 @@ export interface Database {
         };
         Relationships: [];
       };
-      requirement_rules: {
+      verification_requirements: {
         Row: {
           action: RequirementAction;
           doc_type: DocTypeValue;
@@ -427,18 +445,32 @@ export interface Database {
         };
         Relationships: [];
       };
-      app_settings: {
+      aqua_settings: {
         Row: { key: string; value: Json };
         // 관리자만 쓴다(RLS)
         Insert: { key: string; value: Json };
         Update: { key?: string; value?: Json };
         Relationships: [];
       };
+      // 006: 센터(테넌트) 자리. 누구나 id·name·kind·created_at만 읽는다(owner_user_id는 칸 권한 없음). 쓰기는 트리거만
+      centers: {
+        Row: {
+          id: string;
+          owner_user_id: string;
+          name: string | null;
+          kind: CenterKind;
+          created_at: string;
+        };
+        Insert: { [_ in never]: never };
+        Update: { [_ in never]: never };
+        Relationships: [];
+      };
       job_posts: {
         Row: {
           id: string;
           owner_id: string;
-          center_id: string | null;
+          /** centers.id (006부터 NOT NULL) */
+          center_id: string;
           job_type: JobTypeValue;
           title: string;
           region: string;
@@ -521,8 +553,12 @@ export interface Database {
       get_job_detail: { Args: { p_job: string }; Returns: JobDetailRow[] };
       record_job_view: { Args: { p_job: string; p_device_key?: string | null }; Returns: undefined };
       get_public_facts: { Args: { p_user: string }; Returns: PublicFactRow[] };
-      get_center_public_profile: { Args: { p_center: string }; Returns: CenterPublicProfileRow[] };
-      list_center_job_history: { Args: { p_center: string }; Returns: CenterJobHistoryRow[] };
+      /** p_center_id = centers.id (006) */
+      get_center_public_profile: { Args: { p_center_id: string }; Returns: CenterPublicProfileRow[] };
+      list_center_job_history: { Args: { p_center_id: string }; Returns: CenterJobHistoryRow[] };
+      /** 006 구독 자리: 무료 기간엔 true, 유료 전환 후엔 결제 연동 전까지 관리자만 */
+      user_has_product: { Args: { p_user: string; p_product: ProductKey }; Returns: boolean };
+      center_has_product: { Args: { p_center_id: string; p_product: ProductKey }; Returns: boolean };
       get_applicant_contact: {
         Args: { p_app: string };
         Returns: { phone: string | null; email: string | null }[];

@@ -13,7 +13,7 @@ async function myId(): Promise<string | null> {
 export async function fetchMyInstructorProfile(): Promise<InstructorProfile | null> {
   const uid = await myId();
   if (!uid) return null;
-  const { data, error } = await createClient().from("instructor_profiles").select("*").eq("user_id", uid).maybeSingle();
+  const { data, error } = await createClient().from("talent_profiles").select("*").eq("user_id", uid).maybeSingle();
   if (error) throw new Error(error.message);
   return data ? fromRow(data) : null;
 }
@@ -22,7 +22,7 @@ export async function saveInstructorProfile(patch: Partial<InstructorProfile>): 
   try {
     const uid = await myId();
     if (!uid) return { error: "로그인이 필요해요" };
-    const { error } = await (createClient().from("instructor_profiles") as any).upsert(
+    const { error } = await (createClient().from("talent_profiles") as any).upsert(
       { user_id: uid, ...toRow(patch) },
       { onConflict: "user_id" },
     );

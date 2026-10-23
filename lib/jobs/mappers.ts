@@ -20,6 +20,7 @@ export function jobSummaryFromRow(row: any): JobSummary {
   return {
     id: row.id,
     ownerId: row.owner_id,
+    centerId: row.center_id ?? "",
     centerName: row.center_name ?? "",
     jobType: row.job_type as JobType,
     title: row.title,
@@ -89,6 +90,7 @@ export function applicationFromRow(row: any): JobApplication {
 export function centerJobHistoryFromRow(row: any): CenterJobHistoryItem {
   return {
     id: row.id,
+    centerId: row.center_id ?? "",
     title: row.title,
     jobType: row.job_type as JobType,
     payAmount: row.pay_amount ?? null,
@@ -100,6 +102,7 @@ export function centerJobHistoryFromRow(row: any): CenterJobHistoryItem {
 
 export function centerPublicProfileFromRow(row: any): CenterPublicProfile {
   return {
+    centerId: row.center_id ?? "",
     userId: row.user_id,
     centerName: row.center_name ?? "",
     venues: row.venues ?? [],

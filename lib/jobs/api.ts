@@ -103,13 +103,13 @@ export async function recordJobView(id: string): Promise<void> {
 }
 
 export async function fetchPaidMode(): Promise<boolean> {
-  const { data, error } = await createClient().from("app_settings").select("value").eq("key", "paid_mode").maybeSingle();
+  const { data, error } = await createClient().from("aqua_settings").select("value").eq("key", "paid_mode").maybeSingle();
   if (error) fail(error);
   return (data as any)?.value === true;
 }
 
 export async function fetchRequirementRules(): Promise<RequirementRule[]> {
-  const { data, error } = await createClient().from("requirement_rules").select("action, doc_type");
+  const { data, error } = await createClient().from("verification_requirements").select("action, doc_type");
   if (error) fail(error);
   return ((data ?? []) as any[]).map((r) => ({ action: r.action, docType: r.doc_type }));
 }
@@ -121,15 +121,17 @@ export async function getPublicFacts(userId: string): Promise<DocRecord[]> {
   return ((data ?? []) as any[]).map((r) => publicFactToDoc(r, userId));
 }
 
+/** centerId = centers.id (공고 요약의 centerId). 회원 id가 아니다. */
 export async function getCenterPublicProfile(centerId: string): Promise<CenterPublicProfile | null> {
-  const { data, error } = await (createClient() as any).rpc("get_center_public_profile", { p_center: centerId });
+  const { data, error } = await (createClient() as any).rpc("get_center_public_profile", { p_center_id: centerId });
   if (error) fail(error);
   const row = ((data ?? []) as any[])[0];
   return row ? centerPublicProfileFromRow(row) : null;
 }
 
+/** centerId = centers.id (공고 요약의 centerId). */
 export async function listCenterJobHistory(centerId: string): Promise<CenterJobHistoryItem[]> {
-  const { data, error } = await (createClient() as any).rpc("list_center_job_history", { p_center: centerId });
+  const { data, error } = await (createClient() as any).rpc("list_center_job_history", { p_center_id: centerId });
   if (error) fail(error);
   return ((data ?? []) as any[]).map(centerJobHistoryFromRow);
 }
