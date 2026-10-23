@@ -16,6 +16,7 @@ begin;
 --   I2 = f8000000-0000-4000-8000-0000000000a2 (강사, 이력서 없음 — 보는 사람)
 --   M  = f8000000-0000-4000-8000-0000000000b1 (센터 + 강사 겸용, 비공개 이력서,
 --        사업자등록증·강사 자격증 확인, 아무 공고에도 지원하지 않음)
+--   M2 = f8000000-0000-4000-8000-0000000000b2 (센터 + 강사 겸용, 공개 이력서, 사업자등록증·강사 자격증 확인)
 --   A  = f8000000-0000-4000-8000-0000000000d1 (관리자 + 강사 + 센터)
 -- ---------------------------------------------------------------------
 
@@ -35,13 +36,16 @@ values
   ('00000000-0000-0000-0000-000000000000', 'f8000000-0000-4000-8000-0000000000b1',
    'authenticated', 'authenticated', 'p3p-m@aquajob.test', '', now(),
    '{}', '{"role":"center","display_name":"겸용센터M","phone":"010-8000-0004"}', now(), now()),
+  ('00000000-0000-0000-0000-000000000000', 'f8000000-0000-4000-8000-0000000000b2',
+   'authenticated', 'authenticated', 'p3p-m2@aquajob.test', '', now(),
+   '{}', '{"role":"center","display_name":"겸용센터M2","phone":"010-8000-0005"}', now(), now()),
   ('00000000-0000-0000-0000-000000000000', 'f8000000-0000-4000-8000-0000000000d1',
    'authenticated', 'authenticated', 'p3p-d@aquajob.test', '', now(),
    '{}', '{"role":"instructor","display_name":"정리관리자"}', now(), now());
 
 -- 여러 역할·관리자 지정은 운영과 같은 방식(postgres 세션의 update)으로 한다.
 update public.profiles set roles = array['center', 'instructor'], role = 'center'
-  where id = 'f8000000-0000-4000-8000-0000000000b1';
+  where id in ('f8000000-0000-4000-8000-0000000000b1', 'f8000000-0000-4000-8000-0000000000b2');
 update public.profiles set roles = array['admin', 'instructor', 'center'], role = 'admin'
   where id = 'f8000000-0000-4000-8000-0000000000d1';
 
@@ -50,7 +54,8 @@ update public.aqua_settings set value = 'false'::jsonb where key = 'paid_mode';
 
 insert into public.talent_profiles (user_id, is_public) values
   ('f8000000-0000-4000-8000-0000000000a1', true),
-  ('f8000000-0000-4000-8000-0000000000b1', false);
+  ('f8000000-0000-4000-8000-0000000000b1', false),
+  ('f8000000-0000-4000-8000-0000000000b2', true);
 
 insert into public.verification_documents (id, owner_id, doc_type, file_path, meta) values
   ('f8d00000-0000-4000-8000-0000000000c1', 'f8000000-0000-4000-8000-0000000000c1',
@@ -60,7 +65,11 @@ insert into public.verification_documents (id, owner_id, doc_type, file_path, me
   ('f8d00000-0000-4000-8000-0000000000b1', 'f8000000-0000-4000-8000-0000000000b1',
    'business_registration', 'f8000000-0000-4000-8000-0000000000b1/biz.jpg', '{}'),
   ('f8d00000-0000-4000-8000-0000000000b2', 'f8000000-0000-4000-8000-0000000000b1',
-   'instructor_cert', 'f8000000-0000-4000-8000-0000000000b1/cert.jpg', '{"org":"AIDA","grade":"Master"}');
+   'instructor_cert', 'f8000000-0000-4000-8000-0000000000b1/cert.jpg', '{"org":"AIDA","grade":"Master"}'),
+  ('f8d00000-0000-4000-8000-0000000000e1', 'f8000000-0000-4000-8000-0000000000b2',
+   'business_registration', 'f8000000-0000-4000-8000-0000000000b2/biz.jpg', '{}'),
+  ('f8d00000-0000-4000-8000-0000000000e2', 'f8000000-0000-4000-8000-0000000000b2',
+   'instructor_cert', 'f8000000-0000-4000-8000-0000000000b2/cert.jpg', '{"org":"AIDA","grade":"Instructor"}');
 
 -- 서류 확인 → 공고·지원 준비
 --   p3p.j1 = C1 수업 공고, p3p.app = I1 → J1 (지원함)
@@ -76,6 +85,8 @@ begin
   perform public.review_document('f8d00000-0000-4000-8000-0000000000a1', 'verified', v_today + 365, null);
   perform public.review_document('f8d00000-0000-4000-8000-0000000000b1', 'verified', null, null);
   perform public.review_document('f8d00000-0000-4000-8000-0000000000b2', 'verified', v_today + 365, null);
+  perform public.review_document('f8d00000-0000-4000-8000-0000000000e1', 'verified', null, null);
+  perform public.review_document('f8d00000-0000-4000-8000-0000000000e2', 'verified', v_today + 365, null);
 
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'f8000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
@@ -237,9 +248,52 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
+-- multi_role_public_resume_needs_subscription: 겸용 계정 M2(공개 이력서)
+--   대조군: 무료 기간(= 구독 중) C1은 M2 이력서 1행, 서류 사실 2행(사업자등록증·강사 자격증).
+--   유료 전환 뒤 구독 없는 C1은 M2 이름(센터 이름)은 1행이지만 이력서 0행, 서류 사실은 사업자등록증만.
+-- ---------------------------------------------------------------------
+do $$
+declare
+  n int;
+  v_types text[];
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f8000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
+  select count(*) into n from public.talent_profiles where user_id = 'f8000000-0000-4000-8000-0000000000b2';
+  if n <> 1 then raise exception 'multi_role_public_resume_needs_subscription 실패 (무료 기간 이력서 %행)', n; end if;
+  select array_agg(f.doc_type order by f.doc_type) into v_types
+    from public.get_public_facts('f8000000-0000-4000-8000-0000000000b2') f;
+  if v_types is distinct from array['business_registration', 'instructor_cert']::text[] then
+    raise exception 'multi_role_public_resume_needs_subscription 실패 (무료 기간 사실 %)', v_types;
+  end if;
+  reset role;
+
+  update public.aqua_settings set value = 'true'::jsonb where key = 'paid_mode';
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f8000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
+  select count(*) into n from public.profiles where id = 'f8000000-0000-4000-8000-0000000000b2';
+  if n <> 1 then raise exception 'multi_role_public_resume_needs_subscription 실패 (구독 없는 센터가 본 이름 %행)', n; end if;
+  select count(*) into n from public.talent_profiles where user_id = 'f8000000-0000-4000-8000-0000000000b2';
+  if n <> 0 then raise exception 'multi_role_public_resume_needs_subscription 실패 (구독 없는 센터 이력서 %행)', n; end if;
+  select array_agg(f.doc_type order by f.doc_type) into v_types
+    from public.get_public_facts('f8000000-0000-4000-8000-0000000000b2') f;
+  if v_types is distinct from array['business_registration']::text[] then
+    raise exception 'multi_role_public_resume_needs_subscription 실패 (구독 없는 센터 사실 %)', v_types;
+  end if;
+  reset role;
+
+  update public.aqua_settings set value = 'false'::jsonb where key = 'paid_mode';
+end $$;
+
+-- ---------------------------------------------------------------------
 -- banned_owner_cannot_read_own_jobs_directly:
 --   대조군: 활성 C1은 job_posts 직접 조회로 자기 공고 1행.
 --   C1이 퇴출되면 0행(관리자는 계속 1행). 정지도 같다.
+-- inactive_center_name_hidden (같은 블록): 대조군 — 활성 C1의 이름(profiles 행)은 활성 강사 I2가 1행.
+--   C1이 정지·퇴출되면 I2는 0행, C1 본인·관리자는 1행.
 -- ---------------------------------------------------------------------
 do $$
 declare
@@ -251,6 +305,10 @@ begin
     json_build_object('sub', 'f8000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
   select count(*) into n from public.job_posts where id = current_setting('p3p.j1')::uuid;
   if n <> 1 then raise exception 'banned_owner_cannot_read_own_jobs_directly 실패 (활성 주인 %행)', n; end if;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f8000000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
+  select count(*) into n from public.profiles where id = 'f8000000-0000-4000-8000-0000000000c1';
+  if n <> 1 then raise exception 'inactive_center_name_hidden 실패 (활성 센터를 강사가 %행)', n; end if;
   reset role;
 
   foreach v_status in array array['banned', 'suspended'] loop
@@ -261,11 +319,22 @@ begin
       json_build_object('sub', 'f8000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
     select count(*) into n from public.job_posts where owner_id = 'f8000000-0000-4000-8000-0000000000c1';
     if n <> 0 then raise exception 'banned_owner_cannot_read_own_jobs_directly 실패 (% 주인 %행)', v_status, n; end if;
+    -- 본인은 자기 profiles 행을 계속 본다
+    select count(*) into n from public.profiles where id = 'f8000000-0000-4000-8000-0000000000c1';
+    if n <> 1 then raise exception 'inactive_center_name_hidden 실패 (% 센터 본인 %행)', v_status, n; end if;
+
+    -- 활성 강사는 정지·퇴출 센터의 이름(profiles 행)을 못 본다
+    perform set_config('request.jwt.claims',
+      json_build_object('sub', 'f8000000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
+    select count(*) into n from public.profiles where id = 'f8000000-0000-4000-8000-0000000000c1';
+    if n <> 0 then raise exception 'inactive_center_name_hidden 실패 (% 센터를 강사가 %행)', v_status, n; end if;
 
     perform set_config('request.jwt.claims',
       json_build_object('sub', 'f8000000-0000-4000-8000-0000000000d1', 'role', 'authenticated')::text, true);
     select count(*) into n from public.job_posts where id = current_setting('p3p.j1')::uuid;
     if n <> 1 then raise exception 'banned_owner_cannot_read_own_jobs_directly 실패 (% 주인일 때 관리자 %행)', v_status, n; end if;
+    select count(*) into n from public.profiles where id = 'f8000000-0000-4000-8000-0000000000c1';
+    if n <> 1 then raise exception 'inactive_center_name_hidden 실패 (% 센터를 관리자가 %행)', v_status, n; end if;
     reset role;
   end loop;
 

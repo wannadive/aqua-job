@@ -12,13 +12,15 @@
 --     참 = 본인 · 관리자 · (보는 사람이 활성 + 구독 센터(job_center_entitled())
 --          × (대상의 이력서가 공개 또는 대상이 내 공고에 지원(취소 제외)))
 --     대상이 센터 역할을 같이 가졌다는 것(겸용 계정)은 이 판정에 들어가지 않는다.
---   센터 이름: can_view_profile의 "대상이 센터 역할" 분기는 profiles 행(이름·역할 등 계정 기본 칸)만 연다.
+--   센터 이름: can_view_profile의 "대상이 센터 역할" 분기는 활성 센터의 profiles 행(이름·역할 등 계정 기본 칸)만 연다
+--     (정지·퇴출 센터의 행은 본인·관리자만).
 --     profiles 행은 한 행이라 칸별로 나눌 수 없으므로 행은 그대로 보이지만, 이 분기로는
 --     이력서·강사 서류 사실 같은 강사 정보가 더는 열리지 않는다(아래 2·3).
 --
 -- 1) job_can_view_talent(p_user) 새로 — 위 강사 정보 규칙.
 -- 2) can_view_profile(006 기준): 강사 쪽 분기(공개 이력서 강사 · 내 공고 지원자)를 job_can_view_talent로 바꾼다.
---    → 센터가 강사 이름을 보려면 센터 구독이 필요하다(무료 기간엔 지금과 같다). 센터 이름 분기는 그대로.
+--    → 센터가 강사 이름을 보려면 센터 구독이 필요하다(무료 기간엔 지금과 같다).
+--    센터 이름 분기는 대상 센터가 활성일 때만(정지·퇴출 센터 이름은 본인·관리자만).
 -- 3) get_public_facts(006 기준):
 --    센터 서류 사실(사업자등록증·여행업·대표자 신분증·대표 강사 자격증) — 대상이 센터 역할이고 활성이면 누구나
 --      (get_center_public_facts(007)가 이 분기를 쓴다 — 동작 그대로).
@@ -85,11 +87,12 @@ as $$
     or (
       public.is_active()
       and (
-        -- 센터 이름은 로그인한 모두에게. profiles 행(이름)만 연다 — 강사 정보(이력서·강사 서류 사실)는
-        -- 이 분기로 열리지 않는다(job_can_view_talent가 따로 판정).
+        -- 활성 센터의 이름은 로그인한 모두에게. profiles 행(이름)만 연다 — 강사 정보(이력서·강사 서류 사실)는
+        -- 이 분기로 열리지 않는다(job_can_view_talent가 따로 판정). 정지·퇴출 센터는 공개 신원이 없다
+        -- (get_center_public_profile과 같다) — 본인·관리자만 본다.
         exists (
           select 1 from public.profiles t
-          where t.id = target and 'center' = any(t.roles)
+          where t.id = target and 'center' = any(t.roles) and t.account_status = 'active'
         )
         -- 강사 이름: 강사 정보 규칙과 같다(구독 센터 × (공개 이력서 또는 내 공고 지원자))
         or public.job_can_view_talent(target)
@@ -146,10 +149,20 @@ grant execute on function public.get_public_facts(uuid) to anon, authenticated;
 
 -- talent_profiles 조회 (007 정의 기준): 본인 · 관리자 · (활성 + 구독 센터) × (공개 이력서 또는 내 공고 지원자)
 -- = job_can_view_talent(user_id). 판정을 한 곳에 둔다(007과 동작 같음).
+-- 행과 상관없는 부분(본인·관리자·활성·구독)은 (select …)로 한 번만 계산하고, 행마다 도는 것은
+-- job_can_view_talent(user_id)뿐이다(그 안의 같은 조건은 이미 참이라 결과가 같다).
 drop policy if exists talent_profiles_select on public.talent_profiles;
 create policy talent_profiles_select on public.talent_profiles
   for select to authenticated
-  using (public.job_can_view_talent(user_id));
+  using (
+    user_id = (select auth.uid())
+    or (select public.is_admin())
+    or (
+      (select public.is_active())
+      and (select public.job_center_entitled())
+      and public.job_can_view_talent(user_id)
+    )
+  );
 
 -- job_applications 조회 (007 정의 기준)
 --   지원한 강사 본인(취소 포함) · 관리자 · 활성 + 구독 공고 주인(취소 제외)

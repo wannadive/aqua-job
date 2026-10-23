@@ -135,7 +135,7 @@ components/shared/step-question.tsx   공용 UI 조각 (셸·도메인 어디서
 - 008(`20261026_008_pre_paid_security`): `job_applications` 공고 주인 분기도 `job_center_entitled()`(구독 없는 센터는 지원자 이름·한마디도 직접 조회 불가). `job_posts` 주인 분기는 활성 계정만.
 - **강사 정보 vs 센터 이름 (008)**: 강사 정보(이력서 `talent_profiles` · 강사 서류 사실 · 강사 이름)는 `job_can_view_talent(대상)` 하나로 판정한다 —
   본인 · 관리자 · (보는 사람이 활성 + 구독 센터(`job_center_entitled()`) × (대상의 이력서가 공개 또는 대상이 내 공고에 지원, 취소 제외)).
-  `can_view_profile`의 "대상이 센터 역할" 분기는 profiles 행(이름 등 계정 기본 칸)만 연다 — 겸용(센터+강사) 계정이라도 이 분기로는
+  `can_view_profile`의 "대상이 센터 역할" 분기는 **활성** 센터의 profiles 행(이름 등 계정 기본 칸)만 연다(정지·퇴출 센터는 본인·관리자만) — 겸용(센터+강사) 계정이라도 이 분기로는
   강사 정보가 열리지 않는다. `get_public_facts`는 센터 서류 4종(사업자등록증·여행업·대표자 신분증·대표 강사 자격증)만 "대상이 활성 센터면 누구나",
   그 밖의 서류는 로그인 + `job_can_view_talent`. 강사 정보를 여는 새 조건(예: 제안 수락)은 `job_can_view_talent` 안에만 더한다.
 - 결제를 붙일 때는 이 두 함수 안만 바꾼다(구독 표 조회). RPC·정책에서 `paid_mode`로 직접 분기하지 않는다.

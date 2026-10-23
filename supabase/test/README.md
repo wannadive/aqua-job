@@ -11,7 +11,7 @@ Supabase 대시보드 → **SQL Editor**에서 아래 순서로 실행한다.
 5. `supabase/migrations/20261023_005_jobs.sql` — 2단계 공고: 공고·지원·선택·조회수·유료 스위치(`app_settings.paid_mode`), 공개 요약 RPC, 연락처는 선택한 공고 주인에게만
 6. `supabase/migrations/20261024_006_merge_ready.sql` — 핀프렌즈 합류 대비: 테이블 이름 변경(`instructor_profiles`→`talent_profiles`, `documents`→`verification_documents`, `requirement_rules`→`verification_requirements`, `app_settings`→`aqua_settings`), 서류 버킷 `verification-docs`, `centers` 테이블·`job_posts.center_id`, 구독 권한 자리(`center_has_product`/`user_has_product`)
 7. `supabase/migrations/20261025_007_phase2_hardening.sql` — 2단계 보안 보강: 직접 조회 정책에도 활성 계정·센터 구독 확인(`talent_profiles`, `job_applications` — 공고 주인에게 지원 취소 행 숨김), `center_profiles` 직접 조회는 주인·관리자만, 공고 수정·지원자 선택·연락처에 센터 구독 확인(마감은 구독 없이 가능), 공고 수정 때 서류 요건 재확인, 공고 입력 한도(마감 90일·지역 목록 `job_region_options()`·글자 수), 공개 RPC의 `owner_id`·센터 `user_id`는 주인·관리자에게만(+ `get_center_public_facts`)
-8. `supabase/migrations/20261026_008_pre_paid_security.sql` — 유료 전환 전 보안 정리: 강사 정보(이력서·강사 서류 사실·강사 이름) 판정을 `job_can_view_talent()` 하나로(본인·관리자·구독 센터 × 공개 이력서/내 공고 지원자 — 겸용 계정이 센터라는 이유로는 안 열림), `get_public_facts` 강사 서류는 센터 구독 필요, `job_applications` 공고 주인 분기에 센터 구독, `job_posts` 주인 분기에 활성 계정
+8. `supabase/migrations/20261026_008_pre_paid_security.sql` — 유료 전환 전 보안 정리: 강사 정보(이력서·강사 서류 사실·강사 이름) 판정을 `job_can_view_talent()` 하나로(본인·관리자·구독 센터 × 공개 이력서/내 공고 지원자 — 겸용 계정이 센터라는 이유로는 안 열림), `get_public_facts` 강사 서류는 센터 구독 필요, `job_applications` 공고 주인 분기에 센터 구독, `job_posts` 주인 분기에 활성 계정, 센터 이름(profiles 행)은 활성 센터만 공개
 
 각 파일 내용을 통째로 붙여 넣고 **Run**. 반드시 001 → 002 → 003 → 004 → 005 → 006 → 007 → 008 순서로 실행한다.
 여러 번 실행해도 괜찮다(이미 있는 테이블·정책은 건너뛰거나 다시 만든다).
