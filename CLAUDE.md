@@ -16,15 +16,24 @@
 ## 프로젝트 구조
 
 ```
-app/            Next.js App Router (layout, page, globals.css, manifest.ts)
-components/     화면 컴포넌트 (ui/ = shadcn, 이후 auth/ instructor/ center/ admin/ ...)
+app/            Next.js App Router (layout, page, globals.css, manifest.ts) — 라우트 URL 고정, 셸 컴포넌트만 import
+components/
+  app-shell/    셸(합칠 때 교체): app-router, auth/, role-tabs, blocked-screen, intro/, legal/, *-shell.tsx
+  jobs/         공고·지원 (도메인)
+  verification/ 서류 확인 (도메인) + admin/(review-queue, review-detail)
+  talent-profile/  강사 이력서 (도메인)
+  center-listing/  센터 소개 (도메인)
+  shared/       공용 UI 조각 (step-question)
+  ui/           shadcn
 lib/
+  app-shell/    셸: auth-provider.tsx(useAuth), account/, intro/
+  jobs/ verification/ talent-profile/ center-listing/ avatar/   도메인 모듈 (types·logic·api·mappers)
+  supabase/     client.ts, admin.ts, database.types.ts, keep-login.ts (공용, 위치 유지)
   brand.ts      브랜드 값(이름·태그라인)은 여기서만 읽기
-  supabase/     client.ts, database.types.ts
   image.ts      이미지 압축 (compressImage)
-  <도메인>/     새 기능은 types·logic·api(·store)로 나눈 모듈로
+  boundaries.test.ts   도메인→셸 import 금지 검사
 supabase/       schema / policies / functions (SQL)
-docs/           설계·계획·기능 명세
+docs/           설계·계획·기능 명세, FINFRIENDS_INTEGRATION.md
 ```
 
 ## 규칙
@@ -57,6 +66,17 @@ docs/           설계·계획·기능 명세
 ### Supabase
 - 브라우저 클라이언트는 `@supabase/supabase-js`의 `createClient`를 쓴다 (`createBrowserClient` 금지 - getSession()이 hang). `lib/supabase/client.ts`(fetch 15초 타임아웃, lock 우회, 싱글턴)를 그대로 쓴다.
 - `database.types.ts`가 수동 작성이라 `.from()` mutation과 `.rpc()`에는 `as any`가 필요하다 (Supabase v2 타입 추론 `never` 이슈).
+
+## 핀프렌즈 합류 대비 규칙
+AQUA JOB은 나중에 핀프렌즈(`../wanna-dive`)에 합쳐진다. 계획·충돌·체크리스트: `docs/FINFRIENDS_INTEGRATION.md`.
+
+- 새 테이블·함수·버킷은 도메인 접두어(`job_`, `verification_`, `talent_`)를 붙인다. `documents`, `settings` 같은 일반 이름 금지.
+- 센터 데이터는 `center_id → centers.id`. `user_id`를 센터 대신 쓰지 않는다. 권한 = "이 센터의 관리자인가".
+- 강사 이력서·서류 확인은 플랫폼 수준(center_id 없음). 공고는 공유 레이어(visibility public).
+- WD에 있는 함수 이름(`is_admin`, `handle_new_user`, `guard_profile_privileged_columns`, `update_updated_at`)과 시그니처가 다른 함수를 새로 만들지 않는다.
+- 공용 함수를 재정의할 때는 가장 최근 마이그레이션 정의를 복사한다(옛 파일 복사 시 중간 규칙 유실).
+- 폴더 규칙: 셸(라우팅·로그인·역할 전환·*-shell)은 `components/app-shell/`, `lib/app-shell/`. 도메인은 `lib/<도메인>/` + `components/<도메인>/`. 새 기능은 도메인 모듈로 만들고 셸에 로직을 얹지 않는다.
+- 경계 규칙: **도메인 모듈은 app-shell을 import하지 않는다**(허용: `lib/supabase/client`, `components/ui`, `components/shared`). 현재 사용자·역할·콜백은 props로 받는다(예: `ResumeWizard onComplete`). 새 도메인 폴더를 만들면 `lib/boundaries.test.ts`의 `DOMAIN_DIRS`에 추가한다. `pnpm test`가 위반을 잡는다.
 
 ## 테스트
 ```
