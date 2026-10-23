@@ -11,6 +11,7 @@ import {
   publicFactToDoc,
 } from "./mappers";
 import type {
+  ApplicationStatus,
   CenterJobHistoryItem,
   CenterPublicProfile,
   JobApplication,
@@ -91,6 +92,34 @@ export async function getJobDetail(id: string): Promise<JobDetail | null> {
   if (error) fail(error);
   const row = ((data ?? []) as any[])[0];
   return row ? jobDetailFromRow(row) : null;
+}
+
+/**
+ * 공개 상세 열람. 서버가 허용한 경우에만 detail이 온다.
+ * 비로그인·구독 없음(42501)이면 locked=true, 내용은 없다. 그 밖의 오류는 던진다.
+ */
+export async function tryGetJobDetail(id: string): Promise<{ detail: JobDetail | null; locked: boolean }> {
+  const { data, error } = await (createClient() as any).rpc("get_job_detail", { p_job: id });
+  if (error) {
+    if (error.code === "42501") return { detail: null, locked: true };
+    fail(error);
+  }
+  const row = ((data ?? []) as any[])[0];
+  return { detail: row ? jobDetailFromRow(row) : null, locked: false };
+}
+
+/** 이 공고에 내가 낸 지원(최신 1건)의 상태. 없으면 null. */
+export async function getMyApplicationStatus(jobId: string, userId: string): Promise<ApplicationStatus | null> {
+  const { data, error } = await (createClient() as any)
+    .from("job_applications")
+    .select("status, created_at")
+    .eq("job_id", jobId)
+    .eq("instructor_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) fail(error);
+  const row = ((data ?? []) as any[])[0];
+  return row ? (row.status as ApplicationStatus) : null;
 }
 
 /** 조회수 기록. 실패해도 화면에는 영향 없음(오류는 삼킨다). 로그인했으면 id, 아니면 기기 키로 센다. */

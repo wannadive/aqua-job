@@ -17,6 +17,9 @@ export function JobCard({
   showStatus = false,
   extra,
   children,
+  dimmed = false,
+  maxTags,
+  onOpen,
 }: {
   job: JobSummary;
   /** 상태 꼬리표(내 공고 화면용) */
@@ -25,10 +28,29 @@ export function JobCard({
   extra?: ReactNode;
   /** 카드 아래 버튼 영역 */
   children?: ReactNode;
+  /** 마감·기간 지남 공고를 흐리게 */
+  dimmed?: boolean;
+  /** 자격 꼬리표 최대 개수(목록은 2) */
+  maxTags?: number;
+  /** 주면 카드 전체가 눌러 열린다(상세로) */
+  onOpen?: () => void;
 }) {
   const dates = formatJobDates(job);
+  const tags = maxTags == null ? job.requirementTags : job.requirementTags.slice(0, maxTags);
   return (
-    <article className="rounded-card bg-white p-5 shadow-sm">
+    <article
+      className={`rounded-card bg-white p-5 shadow-sm ${dimmed ? "opacity-60" : ""} ${onOpen ? "cursor-pointer" : ""}`}
+      onClick={onOpen}
+      {...(onOpen
+        ? {
+            role: "link",
+            tabIndex: 0,
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key === "Enter" && e.target === e.currentTarget) onOpen();
+            },
+          }
+        : {})}
+    >
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="rounded-full bg-ok-bg px-2.5 py-1 text-xs font-semibold text-ok">{JOB_TYPES[job.jobType].short}</span>
         {showStatus && (
@@ -46,9 +68,9 @@ export function JobCard({
       </p>
       {dates && <p className="mt-2 text-sm font-medium text-ink">{dates}</p>}
       <p className="mt-1 text-sm font-semibold text-ink">{formatPay(job.payAmount, job.payUnit)}</p>
-      {job.requirementTags.length > 0 && (
+      {tags.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {job.requirementTags.map((t) => (
+          {tags.map((t) => (
             <span key={t} className="rounded-full bg-surface px-2.5 py-1 text-xs font-medium text-ink">
               {t}
             </span>

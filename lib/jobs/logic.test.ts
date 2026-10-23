@@ -187,3 +187,14 @@ test("countApplications: 지원 취소 제외", () => {
   assert.deepEqual(m.get("a"), { applied: 1, selected: 1, total: 2 });
   assert.deepEqual(m.get("b"), { applied: 0, selected: 0, total: 1 });
 });
+
+test("sortOpenFirst: 진행중이 먼저, 나머지는 순서 유지", async () => {
+  const { sortOpenFirst } = await import("./logic.ts");
+  const list = [
+    { id: "a", status: "closed" as const },
+    { id: "b", status: "open" as const },
+    { id: "c", status: "expired" as const },
+    { id: "d", status: "open" as const },
+  ];
+  assert.deepEqual(sortOpenFirst(list).map((j) => j.id), ["b", "d", "a", "c"]);
+});

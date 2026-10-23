@@ -182,3 +182,8 @@ export function jobErrorMessage(err: { code?: string | null; message?: string | 
       return "잠시 후 다시 시도해 주세요";
   }
 }
+
+/** 목록 정렬: 진행중 공고를 먼저, 그 밖(마감·기간 지남·모집 완료)은 뒤로. 각 묶음 안의 순서(서버 순서)는 유지. */
+export function sortOpenFirst<T extends { status: JobStatus }>(jobs: T[]): T[] {
+  return [...jobs.filter((j) => j.status === "open"), ...jobs.filter((j) => j.status !== "open")];
+}

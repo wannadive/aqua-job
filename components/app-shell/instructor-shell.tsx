@@ -11,6 +11,7 @@ import { fetchMyDocuments } from "@/lib/verification/api";
 import { DOC_TYPES } from "@/lib/verification/config";
 import { displayStatus, latestByType, todayKst } from "@/lib/verification/logic";
 import { useAuth } from "@/lib/app-shell/auth-provider";
+import { JobsBrowser } from "@/components/app-shell/public/public-pages";
 import { ResumeEditor } from "@/components/talent-profile/resume-editor";
 
 type Tab = "home" | "jobs" | "offers" | "applications" | "resume";
@@ -138,7 +139,7 @@ export function InstructorShell() {
     <div className="mx-auto min-h-app w-full max-w-md">
       <main className="px-5 pb-28 pt-8">
         {tab === "home" && <HomeTab onResume={() => setTab("resume")} />}
-        {tab === "jobs" && <ComingSoon title="공고" />}
+        {tab === "jobs" && <JobsBrowser />}
         {tab === "offers" && <ComingSoon title="제안" />}
         {tab === "applications" && <ComingSoon title="지원 현황" />}
         {tab === "resume" && (

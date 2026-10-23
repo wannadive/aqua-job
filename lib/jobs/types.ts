@@ -144,3 +144,10 @@ export interface RequirementRule {
   action: "post_lesson" | "post_affiliation" | "post_tour" | "send_offer";
   docType: DocType;
 }
+
+/** 공개 화면을 보는 사람. 셸이 현재 로그인 정보를 props로 넘긴다(도메인은 셸을 import하지 않는다). */
+export interface JobViewer {
+  /** 비로그인이면 null */
+  userId: string | null;
+  roles: string[];
+}

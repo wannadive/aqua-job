@@ -53,6 +53,11 @@ export function LoginForm({ onSignup, isAdminEntry }: { onSignup?: () => void; i
             {busy ? "로그인 중…" : "로그인"}
           </Button>
         </form>
+        {!isAdminEntry && (
+          <a href="/jobs" className="mt-2 block w-full py-2 text-center text-sm font-medium text-muted underline">
+            공고 둘러보기
+          </a>
+        )}
         {onSignup && (
           <button type="button" onClick={onSignup} className="mt-4 w-full text-center text-sm font-medium text-accent">
             회원가입
