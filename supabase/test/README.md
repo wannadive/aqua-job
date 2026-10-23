@@ -14,11 +14,14 @@ Supabase 대시보드 → **SQL Editor**에서 아래 순서로 실행한다.
 8. `supabase/migrations/20261026_008_pre_paid_security.sql` — 유료 전환 전 보안 정리: 강사 정보(이력서·강사 서류 사실·강사 이름) 판정을 `job_can_view_talent()` 하나로(본인·관리자·구독 센터 × 공개 이력서/내 공고 지원자 — 겸용 계정이 센터라는 이유로는 안 열림), `get_public_facts` 강사 서류는 센터 구독 필요, `job_applications` 공고 주인 분기에 센터 구독, `job_posts` 주인 분기에 활성 계정, 센터 이름(profiles 행)은 활성 센터만 공개
 9. `supabase/migrations/20261027_009_offers.sql` — 제안: `job_offers`(공고 주인·받은 강사·관리자만 조회, 쓰기는 RPC), 강사 둘러보기 `browse_instructors`(활성 + 구독 센터만, 공개 이력서 칸만), `send_offer`(같은 공고·같은 강사 한 번, 공고당 인원×5건, 지원한 강사 제외) · `withdraw_offer` · `respond_offer`(수락은 강사 구독 + 공고 잠금 + 인원 확인, 거절은 언제나) · `get_offer_contact`(수락한 제안의 공고 주인만), 모집 인원 = 선택 + 수락한 제안(`job_filled_count`), 공고 마감 때 보낸 제안은 마감, 제안을 수락한 강사의 이력서는 그 센터가 본다
 10. `supabase/migrations/20261028_010_notifications.sql` — 알림·웹 푸시: `aqua_notifications`(본인만 조회, 직접 쓰기 없음, 읽음은 RPC, 링크는 앱 안 주소만), 사건 트리거(새 지원자·선택·마감·제안 도착/수락/거절/마감·서류 확인/반려·계정 정지/퇴출·공고 숨김), 서류 만료 30일 전·당일 알림(pg_cron 매일 09:00 KST), 푸시 구독 `aqua_push_subscriptions`(본인만, 알려진 푸시 서비스 주소만), 발송 대기열 `aqua_push_outbox`(service role만) → pg_net이 `/api/push/flush` 호출(비밀값 헤더). **실행 전에 아래 3절의 확장 두 개를 켠다.**
+11. `supabase/migrations/20261029_011_moderation.sql` — 신고·관리자 조치: `job_reports`(신고한 본인·관리자만 조회, 처리 메모 칸은 직접 조회 불가, 쓰기는 RPC), `submit_report`(활성 회원, 볼 수 있는 대상만, 내 것 제외, 같은 대상 24시간 1회·24시간 20건), 위반 사유 목록(가짜 서류·허위 공고·연락처 수집 목적·불법 행위·기타(설명 필수)), 관리자 전용 `admin_hide_job`(공고 숨김 + 남은 지원 미선택·보낸 제안 마감) · `admin_set_account_status`(정지·퇴출·다시 활성, 자기 자신·다른 관리자 불가, 퇴출 시 모집 중 공고 숨김·지원·제안 정리) · `admin_resolve_report` · `admin_list_reports`, 모든 조치 `admin_actions` 기록(`note`·`target_job_id` 칸 추가) + 당사자 알림에 사유
 
-각 파일 내용을 통째로 붙여 넣고 **Run**. 반드시 001 → 002 → 003 → 004 → 005 → 006 → 007 → 008 → 009 → 010 순서로 실행한다.
+> ⚠️ 008~011과 3단계 검사 파일은 **아쿠아잡 프로젝트(cmtwlcsqpczuvtpysadi)**의 SQL Editor에서만 실행한다(파일 첫 줄에도 적어 두었다). 워너다이브 프로젝트에서 실행하지 않는다.
+
+각 파일 내용을 통째로 붙여 넣고 **Run**. 반드시 001 → 002 → 003 → 004 → 005 → 006 → 007 → 008 → 009 → 010 → 011 순서로 실행한다.
 여러 번 실행해도 괜찮다(이미 있는 테이블·정책은 건너뛰거나 다시 만든다).
 
-## 2. 보안 검사 (010까지 적용한 뒤)
+## 2. 보안 검사 (011까지 적용한 뒤)
 
 006에서 테이블 이름이 바뀌었으므로 아래 검사 파일들도 새 이름(`talent_profiles`, `verification_documents`, `verification_requirements`, `aqua_settings`, 버킷 `verification-docs`)으로 고쳐 두었다. **006을 적용하지 않은 DB에서는 1~5번 검사도 실패한다**(테이블이 없다는 오류).
 
@@ -32,8 +35,9 @@ Supabase 대시보드 → **SQL Editor**에서 아래 순서로 실행한다.
 8. `supabase/test/phase3_pre_checks.sql` → 성공하면 `pre3 ok`
 9. `supabase/test/phase3_offers_checks.sql` → 성공하면 `offers ok`
 10. `supabase/test/phase3_notify_checks.sql` → 성공하면 `notify ok`
+11. `supabase/test/phase3_moderation_checks.sql` → 성공하면 `moderation ok`
 
-전체 순서: 001 → 002 → 003 → 004 → 005 → 006 → 007 → 008 → 009 → 010 → phase1_checks → phase1_hardening_checks → phase1_multirole_checks → phase2_pre_checks → phase2_jobs_checks → phase2_merge_ready_checks → phase2_hardening_checks → phase3_pre_checks → phase3_offers_checks → phase3_notify_checks
+전체 순서: 001 → 002 → 003 → 004 → 005 → 006 → 007 → 008 → 009 → 010 → 011 → phase1_checks → phase1_hardening_checks → phase1_multirole_checks → phase2_pre_checks → phase2_jobs_checks → phase2_merge_ready_checks → phase2_hardening_checks → phase3_pre_checks → phase3_offers_checks → phase3_notify_checks → phase3_moderation_checks
 
 007 때문에 고친 기존 검사: `phase2_merge_ready_checks`의 `job_posts_center_id_not_null_and_set_on_create`는 이제 비로그인이 받는 센터 프로필 `user_id`가 null이어야 통과한다(007 전 DB에서는 이 검사가 실패한다).
 008 때문에 고친 기존 검사: `phase1_multirole_checks`·`phase2_pre_checks`도 이제 트랜잭션 안에서 `paid_mode=false`로 시작한다 — 센터가 강사 이름·이력서를 보는 조건이 센터 구독에 걸리기 때문(007·008). 이제 모든 검사 파일이 운영 `paid_mode` 값과 상관없이 무료 기간으로 시작한다(유료 전환 검사는 각 파일 안에서 잠깐 켰다 끈다).
@@ -52,6 +56,7 @@ Supabase 대시보드 → **SQL Editor**에서 아래 순서로 실행한다.
 - 유료 전 보안 정리 검사는 008이 적용되지 않았으면 실패한다(예: `unsubscribed_center_cannot_list_applications 실패`).
 - 제안 검사는 009가 적용되지 않았으면 실패한다(`browse_instructors` 함수가 없다는 오류).
 - 알림 검사는 010이 적용되지 않았으면 실패한다(`aqua_push_subscriptions`·`aqua_save_push_subscription`이 없다는 오류). 검사 중 만든 알림·발송 대기열(pg_net 호출 포함)은 rollback으로 함께 사라져 실제 푸시는 나가지 않는다.
+- 신고·관리자 조치 검사는 011이 적용되지 않았으면 실패한다(`submit_report`·`job_reports`가 없다는 오류). `phase3_offers_checks`에 011 작업 때 더한 검사(`self_offer_refused`, `update_headcount_counts_accepted_offer`, `accepted_private_instructor_name_and_facts`)는 009만으로 통과한다.
 
 ## 3. 알림·웹 푸시 켜기 (010, 운영자가 한 번)
 

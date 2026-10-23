@@ -1,4 +1,4 @@
-// 손으로 쓴 DB 타입 (supabase/migrations/ 001 기반 스키마 + 003 여러 역할 + 005 공고 + 006 합류 대비 이름·centers 기준 + 009 제안 + 010 알림·푸시).
+// 손으로 쓴 DB 타입 (supabase/migrations/ 001 기반 스키마 + 003 여러 역할 + 005 공고 + 006 합류 대비 이름·centers 기준 + 009 제안 + 010 알림·푸시 + 011 신고·관리자 조치).
 // 스키마를 바꾸면 여기도 같이 고친다.
 
 export type Json =
@@ -55,6 +55,40 @@ export type NotificationKindValue =
   | "job_hidden"
   | "account_suspended"
   | "account_banned";
+
+// 011 신고·관리자 조치 — DB job_violation_label()과 같은 목록
+/** 위반 사유: 가짜 서류 · 허위 공고 · 연락처 수집 목적 · 불법 행위 · 기타(설명 필수) */
+export type ViolationReason = "fake_document" | "false_posting" | "contact_harvesting" | "illegal" | "other";
+/** 신고 대상: job=job_posts.id · profile=profiles.id · center=centers.id */
+export type ReportTargetType = "job" | "profile" | "center";
+export type ReportStatus = "open" | "resolved" | "dismissed";
+
+/** 011 admin_list_reports 한 행(관리자 전용). 대상 요약만 — 연락처·서류 칸 없음 */
+export interface AdminReportRow {
+  id: string;
+  reporter_id: string;
+  reporter_name: string | null;
+  target_type: ReportTargetType;
+  target_id: string;
+  /** 공고 주인 · 회원 · 센터 주인 회원 id(대상이 지워졌으면 null) */
+  target_user_id: string | null;
+  /** 공고 제목 · 회원 이름 · 센터명 */
+  target_title: string | null;
+  /** 공고·센터 대상일 때 센터명 */
+  target_center_name: string | null;
+  /** 공고 대상일 때 job_effective_status */
+  target_job_status: JobEffectiveStatus | null;
+  target_account_status: AccountStatus | null;
+  /** 같은 대상의 열린 신고 수 */
+  target_open_reports: number;
+  reason: ViolationReason;
+  note: string | null;
+  status: ReportStatus;
+  created_at: string;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  resolution: string | null;
+}
 
 /** 010 aqua_claim_push_outbox 한 행(service role 전용) */
 export interface ClaimedPushRow {
@@ -478,31 +512,43 @@ export interface Database {
         };
         Relationships: [];
       };
+      // 관리자만 조회. 기록은 관리자 RPC(review_document · admin_*)만 한다
       admin_actions: {
         Row: {
           id: string;
           admin_id: string | null;
           target_user_id: string | null;
+          /** document_verified · document_rejected · job_hidden · account_suspended · account_banned
+           *  · account_reactivated · report_resolved · report_dismissed */
           action: string;
+          /** 서류: '종류 · 반려 사유', 조치(011): 위반 사유 코드(ViolationReason) */
           reason: string | null;
+          /** 011: 관리자 설명·처리 메모(500자) */
+          note: string | null;
+          /** 011: 공고 숨김·공고 신고 처리의 대상 공고 */
+          target_job_id: string | null;
           created_at: string;
         };
-        Insert: {
-          id?: string;
-          admin_id?: string | null;
-          target_user_id?: string | null;
-          action: string;
-          reason?: string | null;
-          created_at?: string;
+        Insert: { [_ in never]: never };
+        Update: { [_ in never]: never };
+        Relationships: [];
+      };
+      // 011: 신고. 직접 쓰기 불가(submit_report RPC). 직접 조회는 신고한 본인·관리자, 아래 칸만
+      // (처리 메모 resolution·처리한 관리자 resolved_by는 칸 권한 없음 — 관리자는 admin_list_reports)
+      job_reports: {
+        Row: {
+          id: string;
+          reporter_id: string;
+          target_type: ReportTargetType;
+          target_id: string;
+          reason: ViolationReason;
+          note: string | null;
+          status: ReportStatus;
+          created_at: string;
+          resolved_at: string | null;
         };
-        Update: {
-          id?: string;
-          admin_id?: string | null;
-          target_user_id?: string | null;
-          action?: string;
-          reason?: string | null;
-          created_at?: string;
-        };
+        Insert: { [_ in never]: never };
+        Update: { [_ in never]: never };
         Relationships: [];
       };
       aqua_settings: {
@@ -715,6 +761,28 @@ export interface Database {
       aqua_is_push_endpoint: { Args: { p_endpoint: string }; Returns: boolean };
       /** 010: service role 전용 — 대기분을 가져가며 보냄 표시 */
       aqua_claim_push_outbox: { Args: { p_limit?: number }; Returns: ClaimedPushRow[] };
+      /** 011: 신고(활성 회원, 볼 수 있는 대상만, 같은 대상 24시간 1회 · 24시간 20건). 새 신고 id */
+      submit_report: {
+        Args: { p_target_type: ReportTargetType; p_target_id: string; p_reason: ViolationReason; p_note?: string | null };
+        Returns: string;
+      };
+      /** 011 관리자: 공고 숨김(남은 지원 → 미선택, 보낸 제안 → 마감) */
+      admin_hide_job: { Args: { p_job: string; p_reason: ViolationReason; p_note?: string | null }; Returns: undefined };
+      /** 011 관리자: 정지·퇴출(위반 사유 필수) · 다시 활성(사유 없이). 자기 자신·다른 관리자 불가 */
+      admin_set_account_status: {
+        Args: { p_user: string; p_status: AccountStatus; p_reason?: ViolationReason | null; p_note?: string | null };
+        Returns: undefined;
+      };
+      /** 011 관리자: 열린 신고만 resolved | dismissed */
+      admin_resolve_report: {
+        Args: { p_report: string; p_status: "resolved" | "dismissed"; p_resolution?: string | null };
+        Returns: undefined;
+      };
+      /** 011 관리자: 신고 목록(최근 것부터, p_status null이면 전부, p_limit 최대 200) */
+      admin_list_reports: {
+        Args: { p_status?: ReportStatus | null; p_limit?: number; p_offset?: number };
+        Returns: AdminReportRow[];
+      };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

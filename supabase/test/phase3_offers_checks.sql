@@ -1,3 +1,4 @@
+-- ⚠️ 아쿠아잡 프로젝트(cmtwlcsqpczuvtpysadi)의 SQL Editor에서 실행 — 워너다이브 프로젝트에서 실행하지 말 것
 -- =====================================================================
 -- 아쿠아잡 009 제안 검사 (개발/테스트 전용) — 009 적용 후 실행
 -- 실행: Supabase SQL Editor에 통째로 붙여 넣고 Run.
@@ -18,7 +19,7 @@ begin;
 --   I3 = f9000000-0000-4000-8000-0000000000a3 (강사, 공개 이력서 — 정지·퇴출 검사용)
 --   I4 = f9000000-0000-4000-8000-0000000000a4 (강사, 공개 이력서 — 지원자)
 --   I5 = f9000000-0000-4000-8000-0000000000a5 (강사, 공개 이력서, 서류 없음 — 지원자)
---   A  = f9000000-0000-4000-8000-0000000000d1 (관리자 + 강사 + 센터)
+--   A  = f9000000-0000-4000-8000-0000000000d1 (관리자 + 강사 + 센터, 공개 이력서, 사업자등록증 확인 — 자기에게 제안 검사)
 -- ---------------------------------------------------------------------
 
 insert into auth.users
@@ -68,7 +69,9 @@ values
   ('f9000000-0000-4000-8000-0000000000a4', true, true, array['서울'], array['pool'], array['토'],
    '[]', '공개4', null, '{}'),
   ('f9000000-0000-4000-8000-0000000000a5', true, true, array['서울'], array['pool'], array['토'],
-   '[{"org":"AIDA","level":"Instructor"}]', '공개5', null, '{}');
+   '[{"org":"AIDA","level":"Instructor"}]', '공개5', null, '{}'),
+  ('f9000000-0000-4000-8000-0000000000d1', true, true, array['서울'], array['pool'], array['토'],
+   '[]', '관리자 겸 강사', null, '{}');
 
 insert into public.verification_documents (id, owner_id, doc_type, file_path, meta) values
   ('f9d00000-0000-4000-8000-0000000000c1', 'f9000000-0000-4000-8000-0000000000c1',
@@ -76,13 +79,17 @@ insert into public.verification_documents (id, owner_id, doc_type, file_path, me
   ('f9d00000-0000-4000-8000-0000000000c2', 'f9000000-0000-4000-8000-0000000000c2',
    'business_registration', 'f9000000-0000-4000-8000-0000000000c2/biz.jpg', '{}'),
   ('f9d00000-0000-4000-8000-0000000000a1', 'f9000000-0000-4000-8000-0000000000a1',
-   'instructor_cert', 'f9000000-0000-4000-8000-0000000000a1/cert.jpg', '{"org":"AIDA","grade":"Instructor"}');
+   'instructor_cert', 'f9000000-0000-4000-8000-0000000000a1/cert.jpg', '{"org":"AIDA","grade":"Instructor"}'),
+  ('f9d00000-0000-4000-8000-0000000000d1', 'f9000000-0000-4000-8000-0000000000d1',
+   'business_registration', 'f9000000-0000-4000-8000-0000000000d1/biz.jpg', '{}');
 
 -- 서류 확인 → 공고 준비 (모두 C1 수업 공고)
 --   p3o.j1 인원 1 (선택 뒤 수락 거부)     p3o.j2 인원 2 (한도·중복·철회)
 --   p3o.j4 인원 1 (제안 한도 5건)          p3o.jc 인원 1 (마감된 공고)
 --   p3o.j5 인원 2 (수락 1 + 선택 1)        p3o.j6 인원 1 (수락 뒤 선택 거부 · 연락처)
 --   p3o.j7 인원 1 (유료 전환 수락·거절)    p3o.j9 인원 1 (직접 마감)   p3o.j10 인원 1 (기한 지남)
+--   p3o.j11 인원 3 (수락 1 + 선택 1 뒤 공고 수정 인원)
+--   p3o.jd 인원 1 (관리자 A의 공고 — 자기에게 제안)
 do $$
 declare
   v_today date := (now() at time zone 'Asia/Seoul')::date;
@@ -96,12 +103,17 @@ begin
   perform public.review_document('f9d00000-0000-4000-8000-0000000000c1', 'verified', null, null);
   perform public.review_document('f9d00000-0000-4000-8000-0000000000c2', 'verified', null, null);
   perform public.review_document('f9d00000-0000-4000-8000-0000000000a1', 'verified', v_today + 365, null);
+  perform public.review_document('f9d00000-0000-4000-8000-0000000000d1', 'verified', null, null);
+  v_id := public.create_job_post(jsonb_build_object(
+    'job_type', 'lesson', 'title', '제안 공고 jd', 'region', '서울',
+    'class_date', v_today + 10, 'headcount', 1, 'description', '제안 설명', 'deadline', v_today + 9));
+  perform set_config('p3o.jd', v_id::text, true);
 
   perform set_config('request.jwt.claims',
     json_build_object('sub', 'f9000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
   for v_key, v_head in
     select * from (values ('j1', 1), ('j2', 2), ('j4', 1), ('jc', 1), ('j5', 2), ('j6', 1),
-                          ('j7', 1), ('j9', 1), ('j10', 1)) v(k, h)
+                          ('j7', 1), ('j9', 1), ('j10', 1), ('j11', 3)) v(k, h)
   loop
     v_id := public.create_job_post(jsonb_build_object(
       'job_type', 'lesson', 'title', '제안 공고 ' || v_key, 'region', '서울',
@@ -821,6 +833,144 @@ begin
   end;
   reset role;
   if not v_blocked then raise exception 'close_expires_offers 실패 (마감된 제안 수락)'; end if;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- self_offer_refused:
+--   관리자 A(강사 + 센터, 공개 이력서·온보딩 끝 — 자기도 제안 대상 조건을 다 갖춤)가 자기 공고 JD로
+--   자기에게 제안 → 거부(22023), 제안 행 없음. 대조군: 같은 공고로 I5에게는 보낼 수 있다.
+-- ---------------------------------------------------------------------
+do $$
+declare
+  n int;
+  v_msg text;
+  v_jd uuid := current_setting('p3o.jd')::uuid;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f9000000-0000-4000-8000-0000000000d1', 'role', 'authenticated')::text, true);
+  v_msg := null;
+  begin
+    perform public.send_offer(v_jd, 'f9000000-0000-4000-8000-0000000000d1', null);
+  exception when invalid_parameter_value then
+    v_msg := sqlerrm;
+  end;
+  if v_msg is distinct from '제안할 수 있는 강사가 아니에요' then
+    reset role;
+    raise exception 'self_offer_refused 실패 (자기에게 제안: %)', coalesce(v_msg, '통과');
+  end if;
+  perform public.send_offer(v_jd, 'f9000000-0000-4000-8000-0000000000a5', null);
+  reset role;
+
+  select count(*) into n from public.job_offers
+    where job_id = v_jd and instructor_id = 'f9000000-0000-4000-8000-0000000000d1';
+  if n <> 0 then raise exception 'self_offer_refused 실패 (자기 제안 %행)', n; end if;
+  select count(*) into n from public.job_offers
+    where job_id = v_jd and instructor_id = 'f9000000-0000-4000-8000-0000000000a5';
+  if n <> 1 then raise exception 'self_offer_refused 실패 (대조군 제안 %행)', n; end if;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- update_headcount_counts_accepted_offer:
+--   J11(인원 3): I1 제안 수락 + I4 지원 선택 = 2명. 공고 수정으로 인원을 1로 줄이기 → 거부(22023, 2명 안내),
+--   공고는 그대로(인원 3·모집 중). 인원을 2로 줄이기 → 성공하고 그 자리에서 인원 마감(closed/full).
+-- ---------------------------------------------------------------------
+do $$
+declare
+  n int;
+  v_msg text;
+  v_offer uuid;
+  v_app uuid;
+  v_j11 uuid := current_setting('p3o.j11')::uuid;
+  v_today date := (now() at time zone 'Asia/Seoul')::date;
+  v_payload jsonb;
+begin
+  v_payload := jsonb_build_object(
+    'job_type', 'lesson', 'title', '제안 공고 j11', 'region', '서울',
+    'class_date', v_today + 10, 'description', '제안 설명', 'deadline', v_today + 9);
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f9000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
+  v_offer := public.send_offer(v_j11, 'f9000000-0000-4000-8000-0000000000a1', null);
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f9000000-0000-4000-8000-0000000000a1', 'role', 'authenticated')::text, true);
+  perform public.respond_offer(v_offer, true);
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f9000000-0000-4000-8000-0000000000a4', 'role', 'authenticated')::text, true);
+  v_app := public.apply_to_job(v_j11, null);
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f9000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
+  perform public.select_applicant(v_app);
+
+  -- 1명으로 줄이기: 선택 1 + 수락 1 = 2명보다 적어서 거부
+  v_msg := null;
+  begin
+    perform public.update_job_post(v_j11, v_payload || jsonb_build_object('headcount', 1));
+  exception when invalid_parameter_value then
+    v_msg := sqlerrm;
+  end;
+  if v_msg is distinct from '이미 선택·수락한 인원(2명)보다 적게 줄일 수 없어요' then
+    reset role;
+    raise exception 'update_headcount_counts_accepted_offer 실패 (1명으로 줄이기: %)', coalesce(v_msg, '통과');
+  end if;
+  reset role;
+  select count(*) into n from public.job_posts where id = v_j11 and headcount = 3 and status = 'open';
+  if n <> 1 then raise exception 'update_headcount_counts_accepted_offer 실패 (거부 뒤 공고가 바뀜)'; end if;
+
+  -- 2명으로 줄이기: 같으면 인원 마감
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f9000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
+  perform public.update_job_post(v_j11, v_payload || jsonb_build_object('headcount', 2));
+  reset role;
+  select count(*) into n from public.job_posts
+    where id = v_j11 and headcount = 2 and status = 'closed' and closed_reason = 'full';
+  if n <> 1 then raise exception 'update_headcount_counts_accepted_offer 실패 (같게 줄인 뒤 인원 마감)'; end if;
+end $$;
+
+-- ---------------------------------------------------------------------
+-- accepted_private_instructor_name_and_facts:
+--   I1(C1의 제안을 수락, C1 공고에 지원한 적 없음)이 이력서를 비공개로 돌려도
+--   C1은 이름(can_view_profile)과 강사 서류 사실(get_public_facts)을 본다.
+--   다른 센터 C2 · 다른 강사 I4는 못 본다(거짓 · 0행).
+-- ---------------------------------------------------------------------
+do $$
+declare
+  n int;
+  v_can boolean;
+  v_user uuid;
+  i1 uuid := 'f9000000-0000-4000-8000-0000000000a1';
+begin
+  select count(*) into n from public.job_applications a
+    join public.job_posts j on j.id = a.job_id
+    where a.instructor_id = i1 and j.owner_id = 'f9000000-0000-4000-8000-0000000000c1';
+  if n <> 0 then raise exception 'accepted_private_instructor_name_and_facts 실패 (전제: I1이 C1 공고에 지원 %건)', n; end if;
+
+  update public.talent_profiles set is_public = false where user_id = i1;
+
+  set local role authenticated;
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'f9000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
+  select public.can_view_profile(i1) into v_can;
+  select count(*) into n from public.get_public_facts(i1) f where f.doc_type = 'instructor_cert';
+  reset role;
+  if not v_can or n <> 1 then
+    raise exception 'accepted_private_instructor_name_and_facts 실패 (C1 이름 % 사실 %행)', v_can, n;
+  end if;
+
+  foreach v_user in array array['f9000000-0000-4000-8000-0000000000c2', 'f9000000-0000-4000-8000-0000000000a4']::uuid[] loop
+    set local role authenticated;
+    perform set_config('request.jwt.claims', json_build_object('sub', v_user, 'role', 'authenticated')::text, true);
+    select public.can_view_profile(i1) into v_can;
+    select count(*) into n from public.get_public_facts(i1);
+    reset role;
+    if v_can or n <> 0 then
+      raise exception 'accepted_private_instructor_name_and_facts 실패 (% 이름 % 사실 %행)', v_user, v_can, n;
+    end if;
+  end loop;
+
+  update public.talent_profiles set is_public = true where user_id = i1;
 end $$;
 
 rollback;

@@ -118,7 +118,7 @@ components/shared/step-question.tsx   공용 UI 조각 (셸·도메인 어디서
 - [ ] 구독: `center_has_product`/`user_has_product`를 WD 결제·구독 표에 연결(센터앱 `center_app` 포함), 묶음 상품 규칙 반영
 - [ ] 연락처: AQUA `private_contacts`와 WD profiles의 phone/email 관계 결정(병합 또는 유지), RLS 재확인
 - [ ] `handle_new_user` + `guard_profile_privileged_columns` + 트리거 `profiles_guard_privileged`를 수작업 병합(최신 정의 파일 기준)
-- [ ] `admin_actions` 병합(컬럼·정책), 감사 기록 유지
+- [ ] `admin_actions` 병합(컬럼·정책), 감사 기록 유지 — AQUA는 011에서 `note`·`target_job_id` 칸을 더했다(조치 사유 코드는 `reason`). 신고 표 `job_reports`(011)는 접두어가 있어 그대로 옮긴다(`target_type` center = `centers.id`)
 - [ ] Storage `avatars` 정책을 `{uid}/...` 기준으로 하나로 병합, `verification-docs` 정책 유지(옛 `documents` 버킷이 남아 있으면 먼저 정리)
 - [ ] `platform_admin` 역할 도입: AQUA admin → platform_admin, WD admin(센터1 관리자)은 그대로. 서류 심사·공고 관리 RLS를 platform_admin 기준으로
 - [ ] 셸 교체: `components/app-shell`, `lib/app-shell`을 WD 셸(`useAuth`, 라우터, 역할 전환)로 대체하고, 도메인 화면을 WD 라우팅에 연결(props 주입)
@@ -150,6 +150,7 @@ components/shared/step-question.tsx   공용 UI 조각 (셸·도메인 어디서
   그 밖의 서류는 로그인 + `job_can_view_talent`. 강사 정보를 여는 새 조건(예: 제안 수락)은 `job_can_view_talent` 안에만 더한다.
 - 009(`20261027_009_offers`): 제안. `browse_instructors`는 호출자 센터의 `aquajob`(`job_center_entitled()`), `send_offer`는 공고 센터의 `aquajob`(`center_has_product`) + 제안 서류 요건(`has_requirements('send_offer')`), `respond_offer` 수락은 강사의 `aquajob_talent`(거절은 구독 없이), `get_offer_contact`는 `get_applicant_contact`와 같은 확인(공고 주인 활성 + 센터 `aquajob` + 수락 + 강사 활성). `job_offers` 직접 조회도 공고 주인 분기에 `job_center_entitled()`. `job_can_view_talent`에 "내 공고의 제안을 수락한 강사"를 더했다. 모집 인원은 선택한 지원 + 수락한 제안(`job_filled_count`).
 - 010(`20261028_010_notifications`): 알림·푸시는 구독과 상관없이 동작(알림 받는 것은 유료 기능이 아님). 푸시는 활성 회원만(계정 정지·퇴출 알림만 당사자에게).
+- 011(`20261029_011_moderation`): 신고(`submit_report`)·관리자 조치(`admin_*`)는 구독과 상관없다(활성 회원·관리자 여부만). 관리자 조치 RPC는 `is_admin()` — 합칠 때 `platform_admin` 기준으로 바꾼다.
 - 결제를 붙일 때는 이 두 함수 안만 바꾼다(구독 표 조회). RPC·정책에서 `paid_mode`로 직접 분기하지 않는다.
 
 ### centers: 지금 vs 합칠 때
