@@ -51,6 +51,7 @@ docs/           설계·계획·기능 명세, FINFRIENDS_INTEGRATION.md
 - 접근 제어는 RLS로 한다. 화면에서 숨기는 것만으로 끝내지 않는다.
 - 직접 REST 경로(테이블 select 정책)도 is_active·구독 확인: RPC에만 관문을 두지 말고, 남의 데이터를 읽는 정책 분기에는 `(select public.is_active())`와 필요한 구독(`job_center_entitled()` 등)을 함께 건다(007).
 - 남의 센터 정보(`center_profiles`)와 회원 id(공고 `owner_id`, 센터 `user_id`)는 SECURITY DEFINER RPC로만 내보내고, 회원 id는 주인·관리자에게만 준다(007).
+- 강사 정보(이력서·강사 서류 사실·강사 이름)는 `job_can_view_talent()` 하나로 판정(본인·관리자·구독 센터 × 공개 이력서/내 공고 지원자). 센터 역할 대상이라는 이유로는 profiles 행(이름)만 열린다(008). 새로 강사 정보를 여는 조건은 이 함수 안에만 더한다.
 - 공고 지역 목록은 DB `job_region_options()`와 `lib/talent-profile/config.ts`의 `REGION_OPTIONS` 두 곳 — 함께 고친다(`lib/jobs/regions.test.ts`가 다르면 실패). 공고 입력 한도는 `lib/jobs/config.ts`의 `JOB_LIMITS`와 DB `job_post_from_payload`가 같아야 한다.
 
 ### 모듈

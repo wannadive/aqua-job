@@ -235,7 +235,7 @@ export async function listMyApplications(): Promise<MyApplication[]> {
   return apps.map((a) => ({ ...a, job: byId.get(a.jobId) ?? null }));
 }
 
-/** 내 공고의 지원자(최신순). 지원 취소 행은 RLS가 주인에게 주지 않는다(007). 이름은 profiles 조인(센터가 볼 수 있는 경우만). */
+/** 내 공고의 지원자(최신순). 지원 취소 행은 RLS가 주인에게 주지 않는다(007), 센터 구독이 없으면 빈 목록(008). 이름은 profiles 조인(센터가 볼 수 있는 경우만). */
 export async function listApplicants(jobId: string): Promise<JobApplication[]> {
   const { data, error } = await (createClient() as any)
     .from("job_applications")

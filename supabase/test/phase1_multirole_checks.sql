@@ -54,6 +54,10 @@ where id = 'c0000000-0000-4000-8000-0000000000a2';
 insert into public.talent_profiles (user_id, intro, is_public)
 values ('c0000000-0000-4000-8000-0000000000a4', '공개 소개', true);
 
+-- 무료 기간에서 시작한다(운영 값이 무엇이든 이 트랜잭션 안에서만). 센터의 이력서 조회는
+-- 센터 구독(job_center_entitled, 007·008)에 걸리므로 운영 paid_mode 값과 상관없게 한다.
+update public.aqua_settings set value = 'false'::jsonb where key = 'paid_mode';
+
 -- ---------------------------------------------------------------------
 -- multi_role_admin_is_admin: 여러 역할 중 admin이 있으면 관리자.
 --   대조군: 강사·센터K는 관리자가 아니다.

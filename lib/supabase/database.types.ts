@@ -563,6 +563,8 @@ export interface Database {
       job_region_options: { Args: Record<string, never>; Returns: string[] };
       /** 007: 호출자 센터가 활성 + aquajob 구독인가 */
       job_center_entitled: { Args: Record<string, never>; Returns: boolean };
+      /** 008: 강사 정보(이력서·강사 서류 사실·강사 이름)를 볼 수 있는가 — 본인·관리자·구독 센터 × 공개/지원자 */
+      job_can_view_talent: { Args: { p_user: string }; Returns: boolean };
       /** 006 구독 자리: 무료 기간엔 true, 유료 전환 후엔 결제 연동 전까지 관리자만 */
       user_has_product: { Args: { p_user: string; p_product: ProductKey }; Returns: boolean };
       center_has_product: { Args: { p_center_id: string; p_product: ProductKey }; Returns: boolean };
