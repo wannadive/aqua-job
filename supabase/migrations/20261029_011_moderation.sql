@@ -31,7 +31,7 @@
 -- 4) admin_hide_job: 공고 → hidden. 남은 '지원함' → '미선택'(지원자에게 '지원한 공고가 마감됐어요' 한 번),
 --    '보냄' 제안 → '마감'(받은 강사에게 '받은 제안이 마감됐어요'), 공고 주인에게 '공고가 숨김 처리됐어요 · 사유'.
 --    선택한 지원·수락한 제안은 그대로(이미 열린 연락처는 상대방 기록에 남는다 — 설계 §7-1).
---    다시 보이게 하는 기능은 없다(필요하면 SQL로).
+--    다시 보이게 하는 기능은 없다(필요하면 SQL로). 내 공고 · 관리자 계정의 공고는 숨길 수 없다(42501).
 -- 5) admin_set_account_status(대상, active|suspended|banned, 사유, 설명):
 --    나 자신 · 다른 관리자 계정은 바꿀 수 없다. 정지·퇴출은 위반 사유 필수, 다시 활성(active)은 사유 없이(설명만).
 --    suspended(일시 정지): 데이터는 그대로. 공고·이력서는 이미 '주인 활성' 조건으로 공개 경로에서 빠지고,
@@ -41,6 +41,8 @@
 --      퇴출 당사자에게는 계정 알림 하나만 간다(공고 숨김·제안 마감·미선택 알림은 당사자에게는 보내지 않음 —
 --      aqua.quiet_user. 상대방(지원자·제안 받은 강사)에게는 평소처럼 간다).
 --      다시 활성으로 바꾸면 접근은 돌아오지만 숨긴 공고·마감된 지원·제안은 되돌리지 않는다.
+--      받아들인 한계: 퇴출과 동시에 진행 중이던 지원·제안이 '지원함'·'보냄'으로 남을 수 있다 — 그래도
+--      select_applicant·respond_offer가 양쪽 활성을 다시 확인하므로 선택·수락(연락처 열림)으로 이어지지 않는다.
 -- 6) admin_resolve_report: 열린 신고만 resolved(조치함) | dismissed(기각)로. 처리 메모 500자까지.
 -- 7) admin_list_reports: 신고 + 대상 요약(공고 제목·센터명·공고 상태·대상 계정 상태·같은 대상의 열린 신고 수).
 --    연락처·서류 사진·파일 경로는 내보내지 않는다.
@@ -361,6 +363,11 @@ begin
   select * into v_job from public.job_posts where id = p_job for update;
   if not found then
     raise exception '공고를 찾을 수 없어요' using errcode = 'P0002';
+  end if;
+  -- 내 공고 · 다른 관리자의 공고는 조치할 수 없다(계정 조치와 같은 규칙)
+  if v_job.owner_id = auth.uid()
+     or exists (select 1 from public.profiles op where op.id = v_job.owner_id and 'admin' = any(op.roles)) then
+    raise exception '내 공고·관리자 계정의 공고는 숨길 수 없어요' using errcode = '42501';
   end if;
   if v_job.status = 'hidden' then
     raise exception '이미 숨긴 공고예요' using errcode = '22023';

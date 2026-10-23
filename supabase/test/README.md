@@ -16,6 +16,10 @@ Supabase 대시보드 → **SQL Editor**에서 아래 순서로 실행한다.
 10. `supabase/migrations/20261028_010_notifications.sql` — 알림·웹 푸시: `aqua_notifications`(본인만 조회, 직접 쓰기 없음, 읽음은 RPC, 링크는 앱 안 주소만), 사건 트리거(새 지원자·선택·마감·제안 도착/수락/거절/마감·서류 확인/반려·계정 정지/퇴출·공고 숨김), 서류 만료 30일 전·당일 알림(pg_cron 매일 09:00 KST), 푸시 구독 `aqua_push_subscriptions`(본인만, 알려진 푸시 서비스 주소만), 발송 대기열 `aqua_push_outbox`(service role만) → pg_net이 `/api/push/flush` 호출(비밀값 헤더). **실행 전에 아래 3절의 확장 두 개를 켠다.**
 11. `supabase/migrations/20261029_011_moderation.sql` — 신고·관리자 조치: `job_reports`(신고한 본인·관리자만 조회, 처리 메모 칸은 직접 조회 불가, 쓰기는 RPC), `submit_report`(활성 회원, 볼 수 있는 대상만, 내 것 제외, 같은 대상 24시간 1회·24시간 20건), 위반 사유 목록(가짜 서류·허위 공고·연락처 수집 목적·불법 행위·기타(설명 필수)), 관리자 전용 `admin_hide_job`(공고 숨김 + 남은 지원 미선택·보낸 제안 마감) · `admin_set_account_status`(정지·퇴출·다시 활성, 자기 자신·다른 관리자 불가, 퇴출 시 모집 중 공고 숨김·지원·제안 정리) · `admin_resolve_report` · `admin_list_reports`, 모든 조치 `admin_actions` 기록(`note`·`target_job_id` 칸 추가) + 당사자 알림에 사유
 
+> 최신 정의 주의: 공용 함수를 다시 정의할 때는 가장 최근 파일의 정의를 복사한다. `aqua_notify`의 최신 정의는 이제 **011**(조치 당사자 조용히 `aqua.quiet_user`)이다 — 앞으로 고칠 때 010이 아니라 011에서 복사한다.
+>
+> 받아들인 한계(011): 퇴출과 동시에 진행 중이던 지원·제안 요청이 '지원함'·'보냄' 행으로 남을 수 있다. `select_applicant`·`respond_offer`가 양쪽 활성을 다시 확인하므로 선택·수락(연락처 열림)으로는 이어지지 않는다.
+
 > ⚠️ 008~011과 3단계 검사 파일은 **아쿠아잡 프로젝트(cmtwlcsqpczuvtpysadi)**의 SQL Editor에서만 실행한다(파일 첫 줄에도 적어 두었다). 워너다이브 프로젝트에서 실행하지 않는다.
 
 각 파일 내용을 통째로 붙여 넣고 **Run**. 반드시 001 → 002 → 003 → 004 → 005 → 006 → 007 → 008 → 009 → 010 → 011 순서로 실행한다.

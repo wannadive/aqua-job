@@ -696,6 +696,7 @@ end $$;
 -- ---------------------------------------------------------------------
 -- admin_cannot_ban_self_or_admin:
 --   관리자 D1은 자기 자신 · 다른 관리자 D2를 바꿀 수 없다(42501, 상태 그대로).
+--   내 공고 · 다른 관리자의 공고도 숨길 수 없다(42501, 모집 중 그대로).
 --   목록 밖 상태 · 정지 사유 없음 · 기타 설명 없음 · 이미 그 상태는 22023, 없는 회원은 P0002.
 -- ---------------------------------------------------------------------
 do $$
@@ -706,8 +707,34 @@ declare
   v_msg text;
   v_blocked boolean;
   v_case text;
+  v_job uuid;
+  v_today date := (now() at time zone 'Asia/Seoul')::date;
   n int;
 begin
+  -- 준비: 관리자 D1·D2에게 센터 역할을 주고 공고를 하나씩 직접 넣는다(postgres 세션)
+  update public.profiles set roles = array['admin', 'instructor', 'center'] where id in (d1, d2);
+  insert into public.job_posts (owner_id, center_id, job_type, title, region, class_date, headcount, description, deadline)
+  select c.owner_user_id, c.id, 'lesson', '관리자 공고', '서울', v_today + 10, 1, '설명', v_today + 9
+  from public.centers c where c.owner_user_id in (d1, d2);
+
+  -- 내 공고 · 다른 관리자의 공고는 숨길 수 없다(42501, 그대로 모집 중)
+  foreach v_case in array array['own_job', 'other_admin_job'] loop
+    select j.id into v_job from public.job_posts j
+      where j.owner_id = case when v_case = 'own_job' then d1 else d2 end and j.title = '관리자 공고';
+    set local role authenticated;
+    perform set_config('request.jwt.claims', json_build_object('sub', d1, 'role', 'authenticated')::text, true);
+    v_blocked := false;
+    begin
+      perform public.admin_hide_job(v_job, 'illegal', null);
+    exception when insufficient_privilege then
+      v_blocked := true;
+    end;
+    reset role;
+    if not v_blocked then raise exception 'admin_cannot_ban_self_or_admin 실패 (%)', v_case; end if;
+    select count(*) into n from public.job_posts where id = v_job and status = 'open';
+    if n <> 1 then raise exception 'admin_cannot_ban_self_or_admin 실패 (% 상태가 바뀜)', v_case; end if;
+  end loop;
+
   set local role authenticated;
   perform set_config('request.jwt.claims', json_build_object('sub', d1, 'role', 'authenticated')::text, true);
 

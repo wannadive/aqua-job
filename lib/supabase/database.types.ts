@@ -535,6 +535,8 @@ export interface Database {
       };
       // 011: 신고. 직접 쓰기 불가(submit_report RPC). 직접 조회는 신고한 본인·관리자, 아래 칸만
       // (처리 메모 resolution·처리한 관리자 resolved_by는 칸 권한 없음 — 관리자는 admin_list_reports)
+      // ⚠️ 칸 권한 때문에 select('*')는 permission denied — 칸을 직접 적는다
+      //    (예: select('id,target_type,target_id,reason,note,status,created_at,resolved_at')).
       job_reports: {
         Row: {
           id: string;
