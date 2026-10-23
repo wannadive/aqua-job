@@ -1,4 +1,4 @@
-// 손으로 쓴 DB 타입 (supabase/migrations/ 001 기반 스키마 + 003 여러 역할 + 005 공고 + 006 합류 대비 이름·centers 기준 + 009 제안).
+// 손으로 쓴 DB 타입 (supabase/migrations/ 001 기반 스키마 + 003 여러 역할 + 005 공고 + 006 합류 대비 이름·centers 기준 + 009 제안 + 010 알림·푸시).
 // 스키마를 바꾸면 여기도 같이 고친다.
 
 export type Json =
@@ -40,6 +40,33 @@ export type ApplicationStatusValue = "applied" | "selected" | "withdrawn" | "not
 export type DestinationKind = "domestic" | "overseas";
 // 009 제안
 export type OfferStatusValue = "offered" | "accepted" | "declined" | "withdrawn" | "expired";
+// 010 알림 — lib/notifications/config.ts NOTIFICATION_KINDS와 같다
+export type NotificationKindValue =
+  | "application_new"
+  | "application_selected"
+  | "application_closed"
+  | "offer_new"
+  | "offer_accepted"
+  | "offer_declined"
+  | "offer_expired"
+  | "doc_verified"
+  | "doc_rejected"
+  | "doc_expiring"
+  | "job_hidden"
+  | "account_suspended"
+  | "account_banned";
+
+/** 010 aqua_claim_push_outbox 한 행(service role 전용) */
+export interface ClaimedPushRow {
+  id: number;
+  subscription_id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  title: string;
+  body: string;
+  link: string;
+}
 
 /** list_public_jobs · get_job_summary 한 행(상세 설명·센터 상세 없음). date는 YYYY-MM-DD, time은 HH:MM:SS */
 export interface JobSummaryRow {
@@ -568,6 +595,39 @@ export interface Database {
         Update: { [_ in never]: never };
         Relationships: [];
       };
+      aqua_notifications: {
+        Row: {
+          id: string;
+          user_id: string;
+          kind: NotificationKindValue;
+          title: string;
+          body: string;
+          /** 앱 안 주소만('/'로 시작) */
+          link: string | null;
+          created_at: string;
+          read_at: string | null;
+        };
+        // 직접 쓰기 불가 — 트리거(aqua_notify)가 만들고, 읽음은 aqua_mark_read · aqua_mark_all_read RPC로만
+        Insert: { [_ in never]: never };
+        Update: { [_ in never]: never };
+        Relationships: [];
+      };
+      aqua_push_subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          created_at: string;
+          last_used_at: string;
+        };
+        // 저장은 aqua_save_push_subscription RPC로만. 본인은 삭제 가능(RLS). 발송 API(service role)는 last_used_at 갱신·끝난 구독 삭제
+        Insert: { [_ in never]: never };
+        Update: { last_used_at?: string };
+        Relationships: [];
+      };
+      // aqua_push_outbox · aqua_push_config · aqua_doc_expiry_notices는 회원 접근 불가 — 타입에 넣지 않는다
       // job_views는 직접 접근 불가(record_job_view RPC로만) — 타입에 넣지 않는다
     };
     Views: { [_ in never]: never };
@@ -643,6 +703,18 @@ export interface Database {
         Args: { p_offer: string };
         Returns: { phone: string | null; email: string | null }[];
       };
+      /** 010: 내 알림 읽음 표시(최대 500개) — 바뀐 개수 */
+      aqua_mark_read: { Args: { p_ids: string[] }; Returns: number };
+      aqua_mark_all_read: { Args: Record<string, never>; Returns: number };
+      aqua_unread_count: { Args: Record<string, never>; Returns: number };
+      /** 010: 활성 회원, 알려진 푸시 서비스 https 주소만, 한 사람 최대 10대 */
+      aqua_save_push_subscription: {
+        Args: { p_endpoint: string; p_p256dh: string; p_auth: string };
+        Returns: undefined;
+      };
+      aqua_is_push_endpoint: { Args: { p_endpoint: string }; Returns: boolean };
+      /** 010: service role 전용 — 대기분을 가져가며 보냄 표시 */
+      aqua_claim_push_outbox: { Args: { p_limit?: number }; Returns: ClaimedPushRow[] };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

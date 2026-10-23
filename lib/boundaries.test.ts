@@ -14,6 +14,7 @@ const DOMAIN_DIRS = [
   "lib/talent-profile", "components/talent-profile",
   "lib/center-listing", "components/center-listing",
   "lib/avatar",
+  "lib/notifications",
   "components/centers",
 ];
 const SHELL_DIRS = ["components/app-shell", "lib/app-shell"];
