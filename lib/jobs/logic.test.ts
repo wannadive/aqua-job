@@ -175,6 +175,9 @@ test("defaultDeadline", () => {
   assert.equal(defaultDeadline("tour", { tourStart: "2026-10-25" }, "2026-10-23"), "2026-10-23");
   assert.equal(defaultDeadline("affiliation", {}, "2026-10-23"), "2026-11-06");
   assert.equal(defaultDeadline("lesson", {}, "2026-10-23"), "2026-11-06");
+  // 오늘+90일을 넘지 않는다
+  assert.equal(defaultDeadline("lesson", { classDate: "2027-06-01" }, "2026-10-23"), "2027-01-21");
+  assert.equal(defaultDeadline("tour", { tourStart: "2027-06-01" }, "2026-10-23"), "2027-01-21");
 });
 
 test("countApplications: 지원 취소 제외", () => {

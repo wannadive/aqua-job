@@ -49,6 +49,9 @@ docs/           설계·계획·기능 명세, FINFRIENDS_INTEGRATION.md
 - 서류 원본은 Storage 비공개 버킷 `verification-docs`에만 둔다(006 이전 테스트 서류만 옛 버킷 `documents`에 남음 — 행의 `bucket` 칸을 따른다). 본인과 관리자만 읽는다.
 - 신분증(`id_card`, `representative_id`)은 확인 후 원본을 삭제한다.
 - 접근 제어는 RLS로 한다. 화면에서 숨기는 것만으로 끝내지 않는다.
+- 직접 REST 경로(테이블 select 정책)도 is_active·구독 확인: RPC에만 관문을 두지 말고, 남의 데이터를 읽는 정책 분기에는 `(select public.is_active())`와 필요한 구독(`job_center_entitled()` 등)을 함께 건다(007).
+- 남의 센터 정보(`center_profiles`)와 회원 id(공고 `owner_id`, 센터 `user_id`)는 SECURITY DEFINER RPC로만 내보내고, 회원 id는 주인·관리자에게만 준다(007).
+- 공고 지역 목록은 DB `job_region_options()`와 `lib/talent-profile/config.ts`의 `REGION_OPTIONS` 두 곳 — 함께 고친다(`lib/jobs/regions.test.ts`가 다르면 실패). 공고 입력 한도는 `lib/jobs/config.ts`의 `JOB_LIMITS`와 DB `job_post_from_payload`가 같아야 한다.
 
 ### 모듈
 - 새 기능은 `lib/<도메인>/` 모듈(types·logic·api·store)로 만든다. 순수 로직은 `*.test.ts`로 테스트한다.

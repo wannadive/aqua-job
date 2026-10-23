@@ -17,6 +17,16 @@ export const PAY_UNITS: Record<PayUnit, string> = {
   total: "총",
 };
 
+/** 입력 한도 — DB job_post_from_payload(007)와 같아야 한다 */
+export const JOB_LIMITS = {
+  /** 마감일은 오늘(KST)부터 이 일수 안 */
+  maxDeadlineDays: 90,
+  /** 장소·근무 시간·행선지 글자 수 */
+  maxPlaceChars: 100,
+  /** 자격 조건 하나의 글자 수 */
+  maxTagChars: 20,
+} as const;
+
 export const REQUIREMENT_TAGS = [
   "AIDA 강사 이상",
   "PADI 강사 이상",

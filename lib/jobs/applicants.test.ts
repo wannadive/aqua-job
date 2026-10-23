@@ -38,13 +38,11 @@ test("isJobFull: 선택 수가 인원 이상", () => {
   assert.equal(isJobFull({ headcount: 2 }, 3), true);
 });
 
-test("filterApplicants: 공고 필터 + 취소한 지원은 기본 숨김", () => {
+test("filterApplicants: 공고 필터 + 취소한 지원은 항상 뺀다", () => {
   const apps = [app("1", "a", "applied"), app("2", "a", "withdrawn"), app("3", "b", "selected"), app("4", "b", "not_selected")];
-  assert.deepEqual(filterApplicants(apps, { jobId: null, showWithdrawn: false }).map((a) => a.id), ["1", "3", "4"]);
-  assert.deepEqual(filterApplicants(apps, { jobId: null, showWithdrawn: true }).map((a) => a.id), ["1", "2", "3", "4"]);
-  assert.deepEqual(filterApplicants(apps, { jobId: "a", showWithdrawn: false }).map((a) => a.id), ["1"]);
-  assert.deepEqual(filterApplicants(apps, { jobId: "a", showWithdrawn: true }).map((a) => a.id), ["1", "2"]);
-  assert.deepEqual(filterApplicants(apps, { jobId: "z", showWithdrawn: true }), []);
+  assert.deepEqual(filterApplicants(apps, { jobId: null }).map((a) => a.id), ["1", "3", "4"]);
+  assert.deepEqual(filterApplicants(apps, { jobId: "a" }).map((a) => a.id), ["1"]);
+  assert.deepEqual(filterApplicants(apps, { jobId: "z" }), []);
 });
 
 test("formatAppliedAt: KST M/D HH:MM", () => {

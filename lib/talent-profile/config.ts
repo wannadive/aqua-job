@@ -1,6 +1,7 @@
 export const GENDER_OPTIONS = ["여", "남", "밝히지 않음"] as const;
 export const AGE_BAND_OPTIONS = ["20대", "30대", "40대", "50대 이상"] as const;
-export const REGION_OPTIONS = ["서울", "경기", "인천", "강원", "충청", "전라", "경상", "부산", "제주", "해외"] as const;
+/** 지역 목록 — DB public.job_region_options()(007)와 같아야 한다(lib/jobs/regions.test.ts가 검사) */
+export const REGION_OPTIONS =["서울", "경기", "인천", "강원", "충청", "전라", "경상", "부산", "제주", "해외"] as const;
 export const SCOPE_OPTIONS = [
   { value: "pool", label: "수영장(풀)" },
   { value: "sea", label: "바다(국내)" },

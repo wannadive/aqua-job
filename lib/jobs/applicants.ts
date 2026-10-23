@@ -30,14 +30,12 @@ export function isJobFull(job: { headcount: number }, selectedCount: number): bo
   return selectedCount >= job.headcount;
 }
 
-/** 공고 필터(null = 전체) + 취소한 지원은 showWithdrawn일 때만. 순서는 그대로. */
-export function filterApplicants<T extends ApplicantLike>(
-  apps: T[],
-  opts: { jobId: string | null; showWithdrawn: boolean },
-): T[] {
-  return apps.filter(
-    (a) => (opts.jobId === null || a.jobId === opts.jobId) && (opts.showWithdrawn || a.status !== "withdrawn"),
-  );
+/**
+ * 공고 필터(null = 전체). 취소한 지원은 항상 뺀다 — 007부터 RLS가 공고 주인에게 취소 행을 주지 않지만
+ * 화면에서도 한 번 더 거른다. 순서는 그대로.
+ */
+export function filterApplicants<T extends ApplicantLike>(apps: T[], opts: { jobId: string | null }): T[] {
+  return apps.filter((a) => (opts.jobId === null || a.jobId === opts.jobId) && a.status !== "withdrawn");
 }
 
 /** ISO 시각 → KST "M/D HH:MM" */

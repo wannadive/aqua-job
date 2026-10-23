@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { JOB_STATUS_LABEL } from "@/components/jobs/job-card";
 import { avatarUrl } from "@/lib/avatar/api";
-import { fetchPaidMode, getCenterPublicProfile, getPublicFacts, listCenterJobHistory } from "@/lib/jobs/api";
+import { fetchPaidMode, getCenterPublicFacts, getCenterPublicProfile, listCenterJobHistory } from "@/lib/jobs/api";
 import { JOB_TYPES } from "@/lib/jobs/config";
 import { formatMdKst, formatPay } from "@/lib/jobs/logic";
 import type { CenterJobHistoryItem, CenterPublicProfile } from "@/lib/jobs/types";
@@ -54,9 +54,9 @@ export function CenterPublicProfileView({
         if (cancelled) return;
         setProfile(p);
         if (!p) return;
-        const [docs, hist] = await Promise.all([getPublicFacts(p.userId), listCenterJobHistory(centerId)]);
+        const [docs, hist] = await Promise.all([getCenterPublicFacts(centerId), listCenterJobHistory(centerId)]);
         if (cancelled) return;
-        // 센터 서류만 사실로 보여 준다(주인이 강사 역할도 가진 경우 강사 서류는 제외)
+        // 센터 서류만 사실로 보여 준다(서버도 센터 서류만 주지만 한 번 더 거른다)
         setFacts(publicFacts(docs, todayKst()).filter((f) => DOC_TYPES[f.type].owner === "center"));
         setHistory(hist);
       } catch {

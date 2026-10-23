@@ -1,4 +1,4 @@
-import { PAY_UNITS } from "./config.ts";
+import { JOB_LIMITS, PAY_UNITS } from "./config.ts";
 import type { DocType } from "../verification/types.ts";
 import type { JobStatus, JobSummary, JobType, PayUnit, RequirementRule } from "./types.ts";
 
@@ -126,20 +126,23 @@ export function addDaysYmd(date: string, days: number): string {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
-/** 마감일 기본값. 수업=수업 전날, 투어=출발 7일 전(오늘보다 앞서지 않게), 소속=오늘+14일. 날짜가 비면 오늘+14일. */
+/** 마감일로 고를 수 있는 가장 늦은 날: 오늘+90일(JOB_LIMITS) */
+export function maxDeadline(today: string): string {
+  return addDaysYmd(today, JOB_LIMITS.maxDeadlineDays);
+}
+
+/**
+ * 마감일 기본값. 수업=수업 전날, 투어=출발 7일 전(오늘보다 앞서지 않게), 소속=오늘+14일. 날짜가 비면 오늘+14일.
+ * 오늘+90일을 넘으면 오늘+90일로 줄인다(서버 한도).
+ */
 export function defaultDeadline(
   type: JobType,
   dates: { classDate?: string | null; tourStart?: string | null },
   today: string,
 ): string {
-  if (type === "lesson" && dates.classDate) {
-    const d = addDaysYmd(dates.classDate, -1);
-    return d < today ? today : d;
-  }
-  if (type === "tour" && dates.tourStart) {
-    const d = addDaysYmd(dates.tourStart, -7);
-    return d < today ? today : d;
-  }
+  const cap = (d: string) => (d < today ? today : d > maxDeadline(today) ? maxDeadline(today) : d);
+  if (type === "lesson" && dates.classDate) return cap(addDaysYmd(dates.classDate, -1));
+  if (type === "tour" && dates.tourStart) return cap(addDaysYmd(dates.tourStart, -7));
   return addDaysYmd(today, 14);
 }
 

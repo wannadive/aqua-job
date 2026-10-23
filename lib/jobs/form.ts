@@ -1,3 +1,6 @@
+import { REGION_OPTIONS } from "../talent-profile/config.ts";
+import { JOB_LIMITS } from "./config.ts";
+import { maxDeadline } from "./logic.ts";
 import type { DestinationKind, JobInput, JobType, PayUnit } from "./types.ts";
 
 export interface Draft {
@@ -54,6 +57,17 @@ export function validateDraft(type: JobType, d: Draft, today: string, minHeadcou
   if (title.length < 2) return "제목을 2자 이상 입력해 주세요";
   if (title.length > 60) return "제목은 60자까지예요";
   if (!d.region) return "지역을 골라 주세요";
+  if (!(REGION_OPTIONS as readonly string[]).includes(d.region)) return "지역은 목록에서 골라 주세요";
+  if (d.venue.trim().length > JOB_LIMITS.maxPlaceChars) return `장소는 ${JOB_LIMITS.maxPlaceChars}자까지예요`;
+  if (type === "affiliation" && d.workTime.trim().length > JOB_LIMITS.maxPlaceChars) {
+    return `근무 시간은 ${JOB_LIMITS.maxPlaceChars}자까지예요`;
+  }
+  if (type === "tour" && d.destination.trim().length > JOB_LIMITS.maxPlaceChars) {
+    return `여행지는 ${JOB_LIMITS.maxPlaceChars}자까지예요`;
+  }
+  if (d.requirementTags.some((t) => t.trim().length > JOB_LIMITS.maxTagChars)) {
+    return `자격 조건은 하나에 ${JOB_LIMITS.maxTagChars}자까지예요`;
+  }
   if (type === "lesson") {
     if (!d.classDate) return "수업 날짜를 입력해 주세요";
     if (d.classDate < today) return "수업 날짜는 오늘 이후여야 해요";
@@ -76,6 +90,7 @@ export function validateDraft(type: JobType, d: Draft, today: string, minHeadcou
   if (!d.description.trim()) return "상세 설명을 입력해 주세요";
   if (!d.deadline) return "마감일을 입력해 주세요";
   if (d.deadline < today) return "마감일은 오늘 이후여야 해요";
+  if (d.deadline > maxDeadline(today)) return `마감일은 오늘부터 ${JOB_LIMITS.maxDeadlineDays}일 안으로 골라 주세요`;
   const start = type === "lesson" ? d.classDate : type === "tour" ? d.tourStart : "";
   if (start && d.deadline > start) return "마감일은 일정 시작일 이전이어야 해요";
   return null;

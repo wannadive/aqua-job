@@ -41,6 +41,24 @@ test("validateDraft: 마감일은 일정 시작 이전", () => {
   assert.ok(validateDraft("lesson", lesson({ deadline: "2026-11-02" }), today));
 });
 
+test("validateDraft: 마감일은 오늘+90일까지 (DB 007과 같은 한도)", () => {
+  const far = lesson({ classDate: "2027-03-01" });
+  assert.equal(validateDraft("affiliation", { ...far, workDays: ["월"], deadline: "2027-01-21" }, today), null);
+  assert.ok(validateDraft("affiliation", { ...far, workDays: ["월"], deadline: "2027-01-22" }, today));
+  assert.ok(validateDraft("lesson", { ...far, deadline: "2027-01-22" }, today));
+});
+
+test("validateDraft: 지역은 목록 안, 장소·근무 시간·여행지 100자, 자격 조건 20자", () => {
+  assert.ok(validateDraft("lesson", lesson({ region: "화성" }), today));
+  assert.equal(validateDraft("lesson", lesson({ venue: "가".repeat(100) }), today), null);
+  assert.ok(validateDraft("lesson", lesson({ venue: "가".repeat(101) }), today));
+  assert.ok(validateDraft("affiliation", lesson({ workDays: ["월"], workTime: "가".repeat(101) }), today));
+  const tour = { ...EMPTY, title: "세부 투어", region: "해외", description: "x", tourStart: "2026-11-20", tourEnd: "2026-11-25", deadline: "2026-11-13" };
+  assert.ok(validateDraft("tour", { ...tour, destination: "가".repeat(101) }, today));
+  assert.equal(validateDraft("tour", { ...tour, destination: "가".repeat(100) }, today), null);
+  assert.ok(validateDraft("lesson", lesson({ requirementTags: ["가".repeat(21)] }), today));
+});
+
 test("draftToInput: 협의면 단가 없음", () => {
   const i = draftToInput("lesson", lesson({ title: "  수업  " }));
   assert.equal(i.title, "수업");

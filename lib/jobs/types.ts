@@ -9,7 +9,8 @@ export type DestinationKind = "domestic" | "overseas";
 /** 목록·공개 주소용 요약. 상세 설명·센터 상세는 없다. date는 YYYY-MM-DD, time은 HH:MM */
 export interface JobSummary {
   id: string;
-  ownerId: string;
+  /** 공고 주인 회원 id — 서버가 주인·관리자에게만 준다(그 밖에는 null, 007). 센터 구분은 centerId로 */
+  ownerId: string | null;
   /** centers.id — 센터 공개 프로필·공고 이력은 이 값으로 찾는다 */
   centerId: string;
   centerName: string;
@@ -91,8 +92,8 @@ export interface CenterJobHistoryItem {
 export interface CenterPublicProfile {
   /** centers.id */
   centerId: string;
-  /** 센터 계정(주인) 회원 id */
-  userId: string;
+  /** 센터 계정(주인) 회원 id — 주인·관리자에게만(그 밖에는 null, 007). 센터 서류 사실은 getCenterPublicFacts(centerId)로 */
+  userId: string | null;
   centerName: string;
   venues: string[];
   teachingDays: string[];

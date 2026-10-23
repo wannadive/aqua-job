@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { fetchMyCenterProfile } from "@/lib/center-listing/api";
 import { createJob, fetchRequirementRules, getJobDetail, updateJob } from "@/lib/jobs/api";
 import { JOB_TYPES, PAY_UNITS, REQUIREMENT_TAGS } from "@/lib/jobs/config";
-import { defaultDeadline, missingForJobType } from "@/lib/jobs/logic";
+import { defaultDeadline, maxDeadline, missingForJobType } from "@/lib/jobs/logic";
 import type { DestinationKind, JobInput, JobSummary, JobType, PayUnit, RequirementRule } from "@/lib/jobs/types";
 import { DAY_OPTIONS, REGION_OPTIONS } from "@/lib/talent-profile/config";
 import { DOC_TYPES } from "@/lib/verification/config";
@@ -164,6 +164,10 @@ export function JobForm({
     if (deadlineTouched || !type) return;
     setD((p) => ({ ...p, deadline: defaultDeadline(type, { classDate: p.classDate || null, tourStart: p.tourStart || null }, today) }));
   }, [type, d.classDate, d.tourStart, deadlineTouched, today]);
+
+  // 마감일 상한: 오늘+90일, 수업·투어는 일정 시작일까지(서버 007과 같은 한도)
+  const startDate = type === "lesson" ? d.classDate : type === "tour" ? d.tourStart : "";
+  const deadlineMax = startDate && startDate < maxDeadline(today) ? startDate : maxDeadline(today);
 
   const missing = (t: JobType): DocType[] => (gate ? missingForJobType(gate.verified, gate.rules, t) : []);
 
@@ -482,6 +486,7 @@ export function JobForm({
         <Input
           type="date"
           min={today}
+          max={deadlineMax}
           value={d.deadline}
           onChange={(e) => {
             setDeadlineTouched(true);

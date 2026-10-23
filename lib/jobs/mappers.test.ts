@@ -44,6 +44,9 @@ const row = {
 test("jobSummaryFromRow", () => {
   const s = jobSummaryFromRow(row);
   assert.equal(s.centerId, "c1");
+  assert.equal(s.ownerId, "o1");
+  // 007: 주인·관리자가 아니면 서버가 owner_id를 null로 준다
+  assert.equal(jobSummaryFromRow({ ...row, owner_id: null }).ownerId, null);
   assert.equal(s.centerName, "블루센터");
   assert.equal(s.jobType, "lesson");
   assert.equal(s.startTime, "09:00");
@@ -126,6 +129,7 @@ test("centerPublicProfileFromRow: 가려진 칸은 null/빈 배열", () => {
   });
   assert.equal(c.centerId, "c1");
   assert.equal(c.userId, "o1");
+  assert.equal(centerPublicProfileFromRow({ center_id: "c1", user_id: null }).userId, null);
   assert.equal(c.detailVisible, false);
   assert.equal(c.representativeName, null);
   assert.deepEqual(c.instructorNames, []);

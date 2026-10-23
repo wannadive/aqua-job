@@ -19,7 +19,7 @@ const hhmm = (t: any): string | null => (typeof t === "string" && t ? t.slice(0,
 export function jobSummaryFromRow(row: any): JobSummary {
   return {
     id: row.id,
-    ownerId: row.owner_id,
+    ownerId: row.owner_id ?? null,
     centerId: row.center_id ?? "",
     centerName: row.center_name ?? "",
     jobType: row.job_type as JobType,
@@ -103,7 +103,7 @@ export function centerJobHistoryFromRow(row: any): CenterJobHistoryItem {
 export function centerPublicProfileFromRow(row: any): CenterPublicProfile {
   return {
     centerId: row.center_id ?? "",
-    userId: row.user_id,
+    userId: row.user_id ?? null,
     centerName: row.center_name ?? "",
     venues: row.venues ?? [],
     teachingDays: row.teaching_days ?? [],

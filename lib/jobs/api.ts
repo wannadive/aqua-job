@@ -152,6 +152,13 @@ export async function getPublicFacts(userId: string): Promise<DocRecord[]> {
   return ((data ?? []) as any[]).map((r) => publicFactToDoc(r, userId));
 }
 
+/** 센터 서류 사실(센터 서류 종류만). centerId = centers.id — 주인 회원 id 없이 읽는다(007). */
+export async function getCenterPublicFacts(centerId: string): Promise<DocRecord[]> {
+  const { data, error } = await (createClient() as any).rpc("get_center_public_facts", { p_center_id: centerId });
+  if (error) fail(error);
+  return ((data ?? []) as any[]).map((r) => publicFactToDoc(r, centerId));
+}
+
 /** centerId = centers.id (공고 요약의 centerId). 회원 id가 아니다. */
 export async function getCenterPublicProfile(centerId: string): Promise<CenterPublicProfile | null> {
   const { data, error } = await (createClient() as any).rpc("get_center_public_profile", { p_center_id: centerId });
@@ -228,7 +235,7 @@ export async function listMyApplications(): Promise<MyApplication[]> {
   return apps.map((a) => ({ ...a, job: byId.get(a.jobId) ?? null }));
 }
 
-/** 내 공고의 지원자(최신순, 지원 취소 포함 — 화면에서 거른다). 이름은 profiles 조인(센터가 볼 수 있는 경우만). */
+/** 내 공고의 지원자(최신순). 지원 취소 행은 RLS가 주인에게 주지 않는다(007). 이름은 profiles 조인(센터가 볼 수 있는 경우만). */
 export async function listApplicants(jobId: string): Promise<JobApplication[]> {
   const { data, error } = await (createClient() as any)
     .from("job_applications")
@@ -239,7 +246,7 @@ export async function listApplicants(jobId: string): Promise<JobApplication[]> {
   return ((data ?? []) as any[]).map(applicationFromRow);
 }
 
-/** 내 여러 공고의 지원자를 한 번에(최신순, 지원 취소 포함 — 화면에서 거른다). 연락처는 없다. */
+/** 내 여러 공고의 지원자를 한 번에(최신순, 지원 취소 행은 RLS가 빼고 준다 — 007). 연락처는 없다. */
 export async function listApplicantsForJobs(jobIds: string[]): Promise<JobApplication[]> {
   if (jobIds.length === 0) return [];
   const { data, error } = await (createClient() as any)

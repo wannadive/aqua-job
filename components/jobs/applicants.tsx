@@ -44,7 +44,6 @@ export function Applicants({
   const [apps, setApps] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [showWithdrawn, setShowWithdrawn] = useState(false);
   const [resumeOf, setResumeOf] = useState<JobApplication | null>(null);
   const [selecting, setSelecting] = useState<JobApplication | null>(null);
   const [busy, setBusy] = useState(false);
@@ -82,8 +81,8 @@ export function Applicants({
     if (!jobsLoading && jobFilter && !jobById.has(jobFilter)) onJobFilterChange(null);
   }, [jobsLoading, jobFilter, jobById, onJobFilterChange]);
 
-  const visible = filterApplicants(apps, { jobId: jobFilter, showWithdrawn });
-  const withdrawnCount = filterApplicants(apps, { jobId: jobFilter, showWithdrawn: true }).length - filterApplicants(apps, { jobId: jobFilter, showWithdrawn: false }).length;
+  // 지원 취소는 서버(RLS)가 주지 않는다(007). 화면도 한 번 더 거른다.
+  const visible = filterApplicants(apps, { jobId: jobFilter });
 
   const doSelect = async () => {
     const target = selecting;
@@ -169,7 +168,7 @@ export function Applicants({
           const selectable = canSelect(a, job, selectedCountFor(apps, a.jobId));
           const showContact = a.status === "selected" && contactOpen.has(a.id);
           return (
-            <article key={a.id} className={`rounded-card bg-white p-5 shadow-sm ${a.status === "withdrawn" ? "opacity-60" : ""}`}>
+            <article key={a.id} className="rounded-card bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="truncate text-lg font-bold text-ink">{a.applicantName ?? "지원자"}</h2>
@@ -180,50 +179,37 @@ export function Applicants({
               {a.message && <p className="mt-3 whitespace-pre-wrap break-words rounded-xl bg-surface p-3 text-sm text-ink">{a.message}</p>}
               <p className="mt-2 text-xs text-muted">{formatAppliedAt(a.createdAt)} 지원</p>
 
-              {a.status !== "withdrawn" && (
-                <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  className={`h-11 border-line text-base ${selectable || a.status === "selected" ? "" : "col-span-2"}`}
+                  onClick={() => {
+                    setContactOpen(new Set());
+                    setResumeOf(a);
+                  }}
+                >
+                  이력서 보기
+                </Button>
+                {selectable && (
+                  <Button className="h-11 bg-ink text-base text-white" disabled={busy} onClick={() => setSelecting(a)}>
+                    선택하기
+                  </Button>
+                )}
+                {a.status === "selected" && (
                   <Button
                     variant="outline"
-                    className={`h-11 border-line text-base ${selectable || a.status === "selected" ? "" : "col-span-2"}`}
-                    onClick={() => {
-                      setContactOpen(new Set());
-                      setResumeOf(a);
-                    }}
+                    className="h-11 border-line text-base"
+                    disabled={showContact}
+                    onClick={() => setContactOpen((s) => new Set(s).add(a.id))}
                   >
-                    이력서 보기
+                    연락처 보기
                   </Button>
-                  {selectable && (
-                    <Button className="h-11 bg-ink text-base text-white" disabled={busy} onClick={() => setSelecting(a)}>
-                      선택하기
-                    </Button>
-                  )}
-                  {a.status === "selected" && (
-                    <Button
-                      variant="outline"
-                      className="h-11 border-line text-base"
-                      disabled={showContact}
-                      onClick={() => setContactOpen((s) => new Set(s).add(a.id))}
-                    >
-                      연락처 보기
-                    </Button>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
               {showContact && <ApplicantContact appId={a.id} />}
             </article>
           );
         })}
-
-      {!listLoading && !jobsError && !error && withdrawnCount > 0 && (
-        <button
-          type="button"
-          onClick={() => setShowWithdrawn((v) => !v)}
-          aria-pressed={showWithdrawn}
-          className="w-full py-3 text-center text-sm font-medium text-muted underline"
-        >
-          {showWithdrawn ? "취소한 지원 숨기기" : `취소한 지원 보기 (${withdrawnCount})`}
-        </button>
-      )}
 
       <Dialog open={selecting !== null} onOpenChange={(v) => !busy && !v && setSelecting(null)}>
         <DialogContent className="max-w-sm">

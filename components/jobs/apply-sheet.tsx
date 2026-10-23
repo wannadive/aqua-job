@@ -114,9 +114,12 @@ export function ApplySheet({
                 placeholder="센터에 전하고 싶은 말이 있다면 적어 주세요"
                 className="mt-2 text-base"
               />
-              <p className="mt-1 text-right text-xs text-muted">
-                {message.length}/{APPLY_MESSAGE_MAX}
-              </p>
+              <div className="mt-1 flex items-start justify-between gap-3 text-xs text-muted">
+                <p>연락처는 적지 말아 주세요. 선택되면 센터에 자동으로 열려요.</p>
+                <p className="shrink-0">
+                  {message.length}/{APPLY_MESSAGE_MAX}
+                </p>
+              </div>
             </div>
 
             <p className="text-sm leading-relaxed text-muted">
