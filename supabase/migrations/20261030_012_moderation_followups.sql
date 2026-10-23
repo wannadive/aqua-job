@@ -214,6 +214,7 @@ begin
 
   if v_job.closed_reason is not null then
     -- 숨기기 전에 이미 마감이었다: 그 마감 그대로
+    -- (주의: closed_reason은 마감 때만 채워지고 지워지지 않는다. 나중에 '다시 열기'를 만들면 closed_reason을 비워야 이 판단이 맞다)
     v_status := 'closed';
     v_reason := v_job.closed_reason;
   elsif v_today > v_job.deadline
