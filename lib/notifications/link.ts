@@ -157,12 +157,13 @@ export function resolveTarget(
     kind: "go",
     intent: { role: "center", tab, jobId, appId },
   });
-  // 서류·홈: 지금 역할 우선
+  // 서류·홈: 지금 역할 우선. 여러 역할 계정은 바로 쓸 수 있는 역할(이력서 작성 끝난 강사·센터)을 온보딩보다 먼저.
   const preferActive = (): "instructor" | "center" | null => {
-    if (activeRole === "instructor" && has("instructor")) return "instructor";
+    if (activeRole === "instructor" && has("instructor") && (instructorReady || !has("center"))) return "instructor";
     if (activeRole === "center" && has("center")) return "center";
-    if (has("instructor")) return "instructor";
+    if (has("instructor") && instructorReady) return "instructor";
     if (has("center")) return "center";
+    if (has("instructor")) return "instructor";
     return null;
   };
 

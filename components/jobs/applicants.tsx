@@ -99,9 +99,11 @@ export function Applicants({
   }, [jobsLoading, jobFilter, jobById, onJobFilterChange]);
 
   // 지원 취소는 서버(RLS)가 주지 않는다(007). 화면도 한 번 더 거른다.
-  const visible = filterApplicants(apps, { jobId: jobFilter });
-  const visibleOffers = acceptedOffers.filter((o) => o.status === "accepted" && (jobFilter === null || o.jobId === jobFilter));
-  const filteredJob = jobFilter ? jobById.get(jobFilter) : undefined;
+  // 목록에 없는 공고(지워짐·숨김)로 필터가 들어오면 '전체'로 본다 — 아래 효과가 필터를 되돌리기 전 한 번의 그리기에서도
+  const activeFilter = jobFilter && jobById.has(jobFilter) ? jobFilter : null;
+  const visible = filterApplicants(apps, { jobId: activeFilter });
+  const visibleOffers = acceptedOffers.filter((o) => o.status === "accepted" && (activeFilter === null || o.jobId === activeFilter));
+  const filteredJob = activeFilter ? jobById.get(activeFilter) : undefined;
   const highlight = useFocusItem(
     focusApp,
     !jobsLoading && !jobsError && !loading && !error,
@@ -157,9 +159,9 @@ export function Applicants({
               key={c.id ?? "all"}
               type="button"
               onClick={() => onJobFilterChange(c.id)}
-              aria-pressed={jobFilter === c.id}
+              aria-pressed={activeFilter === c.id}
               className={`min-h-11 max-w-[14rem] shrink-0 truncate rounded-full px-4 text-sm font-semibold ${
-                jobFilter === c.id ? "bg-ink text-white" : "bg-white text-ink shadow-sm"
+                activeFilter === c.id ? "bg-ink text-white" : "bg-white text-ink shadow-sm"
               }`}
             >
               {c.label}

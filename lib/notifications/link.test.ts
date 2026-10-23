@@ -128,6 +128,22 @@ test("resolveTarget: 서류·홈은 지금 역할 우선", () => {
   });
 });
 
+test("resolveTarget: 여러 역할 계정은 온보딩 전 강사보다 바로 쓸 수 있는 센터를 고른다", () => {
+  assert.deepEqual(resolveTarget({ kind: "documents" }, both, "instructor", false), {
+    kind: "go",
+    intent: { role: "center", tab: "settings", jobId: null, appId: null },
+  });
+  assert.deepEqual(resolveTarget({ kind: "home" }, ["admin", "instructor", "center"], "admin", false), { kind: "stay" });
+  assert.deepEqual(resolveTarget({ kind: "documents" }, ["admin", "instructor", "center"], "admin", false), {
+    kind: "go",
+    intent: { role: "center", tab: "settings", jobId: null, appId: null },
+  });
+  // 강사 역할만 있으면 온보딩 안내
+  assert.deepEqual(resolveTarget({ kind: "documents" }, ["instructor"], "instructor", false), { kind: "needs-onboarding" });
+  // 강사에게만 가는 알림은 센터가 있어도 온보딩 안내
+  assert.deepEqual(resolveTarget({ kind: "offers", offerId: O }, both, "center", false), { kind: "needs-onboarding" });
+});
+
 test("resolveTarget: 역할이 없거나 온보딩 전이면 이동하지 않는다", () => {
   assert.deepEqual(resolveTarget({ kind: "offers", offerId: O }, ["center"], "center", true), { kind: "no-role" });
   assert.deepEqual(resolveTarget({ kind: "applications", jobId: J }, ["admin"], "admin", true), { kind: "no-role" });

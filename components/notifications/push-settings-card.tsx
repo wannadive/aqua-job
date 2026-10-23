@@ -54,6 +54,12 @@ export function PushSettingsCard() {
 
       {s === "ios-needs-install" && <IosInstallSteps />}
 
+      {!push.checkError && (s === "on" || s === "off") && (
+        <p className="mt-2 text-xs text-muted">
+          로그아웃하거나 로그인이 끝나면 이 기기 알림도 꺼져요(같은 폰을 쓰는 다른 사람에게 내 알림이 가지 않게). 다시 로그인하면 알림을 다시 켜 주세요
+        </p>
+      )}
+
       {!push.checkError && s === "on" && (
         <Button variant="outline" className="mt-4 h-12 w-full border-line text-base" disabled={push.busy} onClick={push.disable}>
           {push.busy ? "처리 중…" : "이 기기 알림 끄기"}

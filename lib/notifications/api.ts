@@ -68,3 +68,21 @@ export async function isMyPushSubscription(endpoint: string): Promise<boolean> {
   if (error) throw new Error("알림 상태를 확인하지 못했어요");
   return Array.isArray(data) && data.length > 0;
 }
+
+/**
+ * 푸시를 눌러 앱이 열렸을 때: 그 링크와 똑같은 내 안 읽은 알림을 읽음으로(RLS: 내 행만 보인다).
+ * 최선 노력 — 실패해도 조용히 넘어간다.
+ */
+export async function markReadByLink(link: string): Promise<void> {
+  try {
+    const { data, error } = await (createClient().from("aqua_notifications") as any)
+      .select("id")
+      .eq("link", link)
+      .is("read_at", null)
+      .limit(100);
+    if (error || !Array.isArray(data) || data.length === 0) return;
+    await markRead(data.map((r: { id: string }) => r.id));
+  } catch {
+    // 무시
+  }
+}

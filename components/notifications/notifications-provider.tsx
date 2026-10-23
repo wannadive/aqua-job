@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { fetchUnreadCount, listNotifications, markAllRead, markRead } from "@/lib/notifications/api";
+import { fetchUnreadCount, listNotifications, markAllRead, markRead, markReadByLink } from "@/lib/notifications/api";
 import { NOTIFICATION_PAGE_SIZE } from "@/lib/notifications/config";
 import { canLoadMore, nextListLimit, shouldRefresh, UNREAD_POLL_MS } from "@/lib/notifications/format";
 import { disablePush, enablePush, readPushState, registerServiceWorker } from "@/lib/notifications/push-client";
@@ -57,9 +57,12 @@ export function NotificationsProvider({
   children,
   onOpenLink,
   scope,
+  launchLink = null,
 }: {
   children: ReactNode;
   onOpenLink: (link: string | null) => void;
+  /** 푸시를 눌러 열린 앱 안 주소(검증된 것). 그 링크의 내 안 읽은 알림을 읽음으로 바꾼다 */
+  launchLink?: string | null;
   /** 보고 있는 역할 화면. 바뀌면 열린 목록을 닫는다 */
   scope?: string | null;
 }) {
@@ -117,17 +120,20 @@ export function NotificationsProvider({
     }
   }, []);
 
-  const loadList = useCallback(async (lim: number) => {
+  /** 성공해서 화면에 반영했으면 true */
+  const loadList = useCallback(async (lim: number): Promise<boolean> => {
     const my = ++listSeq.current;
     setListLoading(true);
     setListError(false);
     try {
       const list = await listNotifications(lim);
-      if (!alive.current || my !== listSeq.current) return;
+      if (!alive.current || my !== listSeq.current) return false;
       setItems(list);
       setHasMore(canLoadMore(list.length, lim));
+      return true;
     } catch {
       if (alive.current && my === listSeq.current) setListError(true);
+      return false;
     } finally {
       if (alive.current && my === listSeq.current) setListLoading(false);
     }
@@ -140,11 +146,12 @@ export function NotificationsProvider({
   const loadMore = useCallback(async () => {
     const next = nextListLimit(limitRef.current);
     if (next === limitRef.current) return;
-    limitRef.current = next;
-    await loadList(next);
+    // 늘린 개수는 불러오기에 성공했을 때만 확정(실패하면 다음 '더 보기'도 같은 개수로 다시)
+    if (await loadList(next)) limitRef.current = next;
   }, [loadList]);
 
   const openPanel = useCallback(() => {
+    limitRef.current = NOTIFICATION_PAGE_SIZE; // 열 때마다 최근 50개부터
     panelOpenRef.current = true;
     setPanelOpen(true);
     void reloadList();
@@ -234,6 +241,16 @@ export function NotificationsProvider({
       window.removeEventListener("focus", onFocus);
     };
   }, [refreshUnread, loadList]);
+
+  // 푸시로 열린 링크의 알림 읽음 표시(한 번만, 실패는 조용히) → 개수 다시
+  const launchDone = useRef<string | null>(null);
+  useEffect(() => {
+    if (!launchLink || launchDone.current === launchLink) return;
+    launchDone.current = launchLink;
+    void markReadByLink(launchLink).then(() => {
+      if (alive.current) void refreshUnread(true);
+    });
+  }, [launchLink, refreshUnread]);
 
   // ---- 푸시
   const refreshPush = useCallback(async () => {

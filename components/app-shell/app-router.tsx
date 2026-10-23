@@ -60,13 +60,18 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
   const [nav, setNav] = useState<(NavIntent & { seq: number }) | null>(null);
   const navSeq = useRef(0);
   // 푸시를 눌러 '/?tab=…'로 열렸을 때의 대상. 로그인한 활성 계정이 생기면 한 번 적용한다(메모리에만 둔다).
-  const launchTarget = useRef<NotificationTarget | null>(null);
+  const launchTarget = useRef<{ target: NotificationTarget; link: string } | null>(null);
+  // 적용한 푸시 링크(그 알림을 읽음으로 바꾸는 데만 쓴다)
+  const [launchLink, setLaunchLink] = useState<string | null>(null);
+  // 화면 전체 입력 폼(공고 작성 등)이 열려 있으면 종을 숨긴다 — 알림으로 이동하면서 쓰던 내용이 사라지지 않게
+  const [fullScreenForm, setFullScreenForm] = useState(false);
   const userId = user?.id ?? null;
   const ready_ = !!user && user.accountStatus === "active";
 
   // 계정이 바뀌거나 로그아웃하면 남은 이동 요청을 버린다
   useEffect(() => {
     setNav(null);
+    setLaunchLink(null);
   }, [userId]);
 
   const goTarget = useCallback(
@@ -112,7 +117,10 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     const t = launchTarget.current;
     if (!t) return;
     launchTarget.current = null;
-    if (ready_) goTarget(t);
+    if (ready_) {
+      goTarget(t.target);
+      setLaunchLink(t.link);
+    }
   }, [isLoading, user, ready_, goTarget]);
 
   useEffect(() => {
@@ -135,7 +143,8 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     try {
       const lt = readLaunchTarget(window.location.search);
       if (lt.present) {
-        launchTarget.current = lt.target;
+        // 저장된 알림 링크와 같은 모양('/?…')으로 기억한다(읽음 표시용, 해석에 성공한 것만)
+        launchTarget.current = lt.target ? { target: lt.target, link: "/" + window.location.search } : null;
         if (lt.target) setIntroSeen(true); // 알림으로 왔으면 도입부 대신 로그인 화면
         window.history.replaceState(window.history.state, "", window.location.pathname);
       }
@@ -171,9 +180,9 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
 
   // 활성 계정의 역할 화면: 위에 종(알림), 여러 역할 계정은 그 위에 [관리자] [강사] [센터] 탭.
   // 알림 상태는 사용자마다 따로(key) — 계정이 바뀌면 통째로 새로 만든다.
-  const withRoleTabs = (screen: ReactNode) =>
+  const withRoleTabs = (screen: ReactNode, showBell = true) =>
     user && shownRole ? (
-      <NotificationsProvider key={user.id} onOpenLink={openLink} scope={shownRole}>
+      <NotificationsProvider key={user.id} onOpenLink={openLink} scope={shownRole} launchLink={launchLink}>
         <div style={user.roles.length > 1 ? { ["--role-tabs-h" as string]: ROLE_TABS_HEIGHT } : undefined}>
           {user.roles.length > 1 && (
             <RoleTabs
@@ -186,7 +195,7 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
               }}
             />
           )}
-          <NotificationBar />
+          {showBell && <NotificationBar />}
           {screen}
         </div>
         <NotificationPanel />
@@ -223,13 +232,17 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     case "blocked":
       return <BlockedScreen />;
     case "instructor-onboarding":
-      return withRoleTabs(<ResumeWizard onComplete={refreshAccount} />);
+      // 첫 이력서 작성도 화면 전체 입력 폼 → 종을 숨긴다
+      return withRoleTabs(<ResumeWizard onComplete={refreshAccount} />, false);
     case "instructor":
       return withRoleTabs(
         <InstructorShell nav={nav?.role === "instructor" ? nav : null} onNavConsumed={consumeNav} />,
       );
     case "center":
-      return withRoleTabs(<CenterShell nav={nav?.role === "center" ? nav : null} onNavConsumed={consumeNav} />);
+      return withRoleTabs(
+        <CenterShell nav={nav?.role === "center" ? nav : null} onNavConsumed={consumeNav} onFullScreenFormChange={setFullScreenForm} />,
+        !fullScreenForm,
+      );
     case "admin":
       return withRoleTabs(<AdminShell />);
   }

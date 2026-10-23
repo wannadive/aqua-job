@@ -164,7 +164,16 @@ function SettingsTab() {
 
 type Overlay = { kind: "new" } | { kind: "edit"; jobId: string } | null;
 
-export function CenterShell({ nav = null, onNavConsumed }: { nav?: CenterNav | null; onNavConsumed?: () => void } = {}) {
+export function CenterShell({
+  nav = null,
+  onNavConsumed,
+  onFullScreenFormChange,
+}: {
+  nav?: CenterNav | null;
+  onNavConsumed?: () => void;
+  /** 공고 작성·수정 화면이 열리고 닫힐 때 */
+  onFullScreenFormChange?: (open: boolean) => void;
+} = {}) {
   const [tab, setTab] = useState<Tab>("home");
   const [overlay, setOverlay] = useState<Overlay>(null);
   // 지원자 탭의 공고 필터(null = 전체). 공고 카드 [지원자 보기]는 그 공고로 연다.
@@ -189,21 +198,51 @@ export function CenterShell({ nav = null, onNavConsumed }: { nav?: CenterNav | n
   // 지원자 탭을 알림으로 열 때마다 새로 그려 지원 목록을 다시 읽게 한다
   const [applicantsKey, setApplicantsKey] = useState(0);
   const mountedRef = useRef(false);
+  const latestNavRef = useRef(0);
+  const tabRef = useRef<Tab>("home");
+  const fullScreenCb = useRef(onFullScreenFormChange);
+  fullScreenCb.current = onFullScreenFormChange;
+
+  // 화면 전체 입력 폼(공고 작성·수정)이 열렸는지 셸 라우터에 알린다(열려 있으면 종을 숨김)
+  useEffect(() => {
+    fullScreenCb.current?.(overlay !== null);
+  }, [overlay]);
+  useEffect(() => () => fullScreenCb.current?.(false), []);
 
   // 알림 → 탭 이동 + 해당 항목. 이동한 화면의 데이터만 다시 불러온다.
   useEffect(() => {
     if (!nav) return;
     // 방금 열린 화면이면(역할 전환) 훅들이 이미 처음 불러오는 중이라 다시 부르지 않는다
     const fresh = !mountedRef.current;
-    setOverlay(null);
-    setFocusApp(nav.tab === "applicants" && nav.appId ? { id: nav.appId, seq: nav.seq } : null);
-    setFocusJob(nav.tab === "jobs" && nav.jobId ? { id: nav.jobId, seq: nav.seq } : null);
-    if (nav.tab === "applicants") {
-      setApplicantJob(nav.jobId);
-      setApplicantsKey(nav.seq);
-      if (!fresh) void reloadBoth();
+    const seq = nav.seq;
+    const target = nav.tab;
+    latestNavRef.current = seq;
+    tabRef.current = target;
+    setOverlay(null); // 종은 입력 폼이 열려 있을 때 숨겨지므로 여기 올 때 폼은 없다(안전장치)
+    setFocusApp(null);
+    setFocusJob(null);
+    // 앱을 연 채 알림을 누르면 지금 목록이 낡았을 수 있다(새 지원, 숨김으로 진행중→마감).
+    // → 다시 불러온 뒤에 필터·찾기 요청을 건다(더 새 알림 이동이 있었거나 다른 탭으로 나갔으면 버림).
+    const after = (p: Promise<unknown>, apply: () => void) =>
+      void p.then(() => {
+        if (latestNavRef.current === seq && tabRef.current === target) apply();
+      });
+    if (target === "applicants") {
+      const jobId = nav.jobId;
+      const appFocus = nav.appId ? { id: nav.appId, seq } : null;
+      const apply = () => {
+        setApplicantJob(jobId);
+        setApplicantsKey(seq); // 지원 목록을 새로 읽게 다시 그린다
+        setFocusApp(appFocus);
+      };
+      if (fresh) apply();
+      else after(reloadBoth(), apply);
     }
-    if (!fresh && nav.tab === "jobs") void reloadJobs();
+    if (target === "jobs") {
+      const jobFocus = nav.jobId ? { id: nav.jobId, seq } : null;
+      if (fresh) setFocusJob(jobFocus);
+      else after(reloadJobs(), () => setFocusJob(jobFocus));
+    }
     setTab(nav.tab);
     onNavConsumed?.();
   }, [nav]); // eslint-disable-line react-hooks/exhaustive-deps -- nav가 바뀔 때만 한 번
@@ -213,6 +252,7 @@ export function CenterShell({ nav = null, onNavConsumed }: { nav?: CenterNav | n
   }, []);
 
   useEffect(() => {
+    tabRef.current = tab;
     if (tab !== "applicants") setFocusApp(null);
     if (tab !== "jobs") setFocusJob(null);
   }, [tab]);

@@ -218,6 +218,8 @@ export function InstructorShell({ nav = null, onNavConsumed }: { nav?: Instructo
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   const [focusOffer, setFocusOffer] = useState<FocusRequest | null>(null);
   const mountedRef = useRef(false);
+  const latestNavRef = useRef(0);
+  const tabRef = useRef<Tab>("home");
   const [focusJob, setFocusJob] = useState<FocusRequest | null>(null);
 
   // 알림 → 탭 이동 + 해당 항목. 이동한 화면의 데이터만 다시 불러온다(알림은 화면을 연 뒤에 왔을 수 있다).
@@ -225,11 +227,29 @@ export function InstructorShell({ nav = null, onNavConsumed }: { nav?: Instructo
     if (!nav) return;
     // 방금 열린 화면이면(역할 전환) 훅들이 이미 처음 불러오는 중이라 다시 부르지 않는다
     const fresh = !mountedRef.current;
+    const seq = nav.seq;
+    const target = nav.tab;
+    latestNavRef.current = seq;
+    tabRef.current = target;
     setApplying(null);
-    setFocusOffer(nav.tab === "offers" && nav.offerId ? { id: nav.offerId, seq: nav.seq } : null);
-    setFocusJob(nav.tab === "applications" && nav.jobId ? { id: nav.jobId, seq: nav.seq } : null);
-    if (!fresh && nav.tab === "offers") void rec.reload();
-    if (!fresh && nav.tab === "applications") void Promise.all([my.reload(), rec.reload()]);
+    setFocusOffer(null);
+    setFocusJob(null);
+    const offerFocus = target === "offers" && nav.offerId ? { id: nav.offerId, seq } : null;
+    const jobFocus = target === "applications" && nav.jobId ? { id: nav.jobId, seq } : null;
+    // 앱을 연 채 알림을 누르면 지금 목록에는 새 항목이 없거나 묶음(답 대기→마감, 지원함→선택)이 바뀌었을 수 있다.
+    // → 다시 불러온 뒤에 찾기 요청을 건다(더 새 알림 이동이 있었거나 다른 탭으로 나갔으면 버림).
+    const after = (p: Promise<unknown>, apply: () => void) =>
+      void p.then(() => {
+        if (latestNavRef.current === seq && tabRef.current === target) apply();
+      });
+    if (target === "offers") {
+      if (fresh) setFocusOffer(offerFocus);
+      else after(rec.reload(), () => setFocusOffer(offerFocus));
+    }
+    if (target === "applications") {
+      if (fresh) setFocusJob(jobFocus);
+      else after(Promise.all([my.reload(), rec.reload()]), () => setFocusJob(jobFocus));
+    }
     if (nav.tab === "jobs") {
       setOpenJobId(nav.jobId);
       if (!fresh) setReloadKey((n) => n + 1);
@@ -244,6 +264,7 @@ export function InstructorShell({ nav = null, onNavConsumed }: { nav?: Instructo
 
   // 다른 탭으로 나가면 강조 요청을 버린다(돌아와도 다시 강조·안내하지 않게)
   useEffect(() => {
+    tabRef.current = tab;
     if (tab !== "offers") setFocusOffer(null);
     if (tab !== "applications") setFocusJob(null);
   }, [tab]);
