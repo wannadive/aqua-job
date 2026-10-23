@@ -12,7 +12,7 @@ begin;
 
 -- ---------------------------------------------------------------------
 -- 준비: 테스트 사용자. auth.users에 넣으면 가입 트리거가 돈다(→ 센터는 centers 행, 연락처 행도 생긴다).
---   C1 = fa000000-0000-4000-8000-0000000000c1 (센터 '알림센터1', 사업자등록증 확인 — 공고 주인)
+--   C1 = fa000000-0000-4000-8000-0000000000c1 (센터 '알림센터1', 사업자등록증 확인 — 공고 주인, 푸시 기기 1대)
 --   C2 = fa000000-0000-4000-8000-0000000000c2 (센터 '알림센터2' — 만료 당일 서류, 기기 10대 제한)
 --   I1 = fa000000-0000-4000-8000-0000000000a1 (강사, 공개 이력서, 푸시 기기 1대)
 --   I2 = fa000000-0000-4000-8000-0000000000a2 (강사, 공개 이력서, 푸시 기기 1대)
@@ -107,6 +107,10 @@ begin
     json_build_object('sub', 'fa000000-0000-4000-8000-0000000000a2', 'role', 'authenticated')::text, true);
   perform public.aqua_save_push_subscription(
     'https://fcm.googleapis.com/fcm/send/p3n-i2-device', repeat('A', 87), repeat('B', 22));
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', 'fa000000-0000-4000-8000-0000000000c1', 'role', 'authenticated')::text, true);
+  perform public.aqua_save_push_subscription(
+    'https://fcm.googleapis.com/fcm/send/p3n-c1-device', repeat('A', 87), repeat('B', 22));
   reset role;
 
   perform set_config('p3n.sub_i1',
@@ -198,6 +202,13 @@ begin
     where user_id = c1 and kind = 'job_hidden' and body = '알림 공고 j2 · 사유: 허위 공고'
       and link = '/?tab=jobs&job=' || current_setting('p3n.j2');
   if n <> 1 then raise exception 'triggers_fire 실패 (공고 숨김 알림 %건)', n; end if;
+  -- 공고 숨김 푸시(C1 기기): 공고 제목·사유 없이 일반 문구
+  select count(*) into n from public.aqua_push_outbox o
+    join public.aqua_notifications a on a.id = o.notification_id
+    where a.user_id = c1 and a.kind = 'job_hidden'
+      and o.title = '' and o.body = '앱에서 확인해 주세요'
+      and (o.title || o.body) !~ '(허위|사유|알림 공고)';
+  if n <> 1 then raise exception 'triggers_fire 실패 (공고 숨김 푸시 문구 %건)', n; end if;
 
   -- 제안 → 수락 → 센터
   set local role authenticated;
@@ -277,7 +288,7 @@ end $$;
 -- ---------------------------------------------------------------------
 -- reapply_notify_throttled: 지원 → 취소 → 지원 → 취소 → 지원을 해도 센터의 새 지원자 알림은 24시간에 한 번
 -- ---------------------------------------------------------------------
-do $
+do $$
 declare
   v_app uuid;
   v_app2 uuid;
@@ -298,13 +309,13 @@ begin
     where user_id = 'fa000000-0000-4000-8000-0000000000c1' and kind = 'application_new'
       and link = '/?tab=applicants&job=' || current_setting('p3n.j5') || '&app=' || v_app;
   if n <> 1 then raise exception 'reapply_notify_throttled 실패 (센터 알림 %건)', n; end if;
-end $;
+end $$;
 
 -- ---------------------------------------------------------------------
 -- notify_failure_does_not_block: 알림 쓰기가 실패해도(검사용 제약을 잠깐 걸어 새 지원자 알림을 일부러 거부)
 --   지원은 그대로 저장되고 알림만 빠진다(트리거가 경고만 남김). 제약은 바로 지운다(트랜잭션도 되돌림).
 -- ---------------------------------------------------------------------
-do $
+do $$
 declare
   v_app uuid;
   n int;
@@ -325,7 +336,7 @@ begin
   select count(*) into n from public.aqua_notifications
     where kind = 'application_new' and link like '/?tab=applicants&job=' || current_setting('p3n.j6') || '%';
   if n <> 0 then raise exception 'notify_failure_does_not_block 실패 (실패해야 할 알림 %건)', n; end if;
-end $;
+end $$;
 
 -- ---------------------------------------------------------------------
 -- notifications_own_only:
@@ -532,7 +543,8 @@ begin
   perform public.aqua_save_push_subscription('https://updates.push.services.mozilla.com/wpush/v2/p3n-c1', repeat('A', 87), repeat('B', 22));
   perform public.aqua_save_push_subscription('https://wns2-par02p.notify.windows.com/w/?token=p3n-c1', repeat('A', 87), repeat('B', 22));
   select count(*) into n from public.aqua_push_subscriptions;
-  if n <> 3 then raise exception 'push_subscription_own_only 실패 (C1 자기 구독 %건)', n; end if;
+  -- 준비 단계 기기 1대 + 방금 3대
+  if n <> 4 then raise exception 'push_subscription_own_only 실패 (C1 자기 구독 %건)', n; end if;
 
   -- 남의 구독(I1)은 안 보이고 안 지워진다
   select count(*) into n from public.aqua_push_subscriptions where user_id = i1;
