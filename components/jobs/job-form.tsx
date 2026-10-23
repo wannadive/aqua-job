@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { effectiveDoc } from "@/lib/verification/effective";
 import { fetchMyDocuments } from "@/lib/verification/api";
 import { todayKst } from "@/lib/verification/logic";
 import type { DocType } from "@/lib/verification/types";
+import { EMPTY, draftToInput, validateDraft, type Draft } from "@/lib/jobs/form";
 import { JobCard } from "./job-card";
 
 const TYPE_DESC: Record<JobType, string> = {
@@ -25,53 +26,13 @@ const TYPE_DESC: Record<JobType, string> = {
   tour: "투어에 함께 갈 동행 강사를 찾아요",
 };
 
-interface Draft {
-  title: string;
-  region: string;
-  venue: string;
-  classDate: string;
-  startTime: string;
-  endTime: string;
-  workDays: string[];
-  workTime: string;
-  tourStart: string;
-  tourEnd: string;
-  destination: string;
-  destinationKind: DestinationKind;
-  coversFlight: boolean;
-  coversLodging: boolean;
-  negotiable: boolean;
-  payAmount: string;
-  payUnit: PayUnit;
-  headcount: string;
-  requirementTags: string[];
-  description: string;
-  deadline: string;
+function StickyBar({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-white px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3">
+      <div className="mx-auto max-w-md">{children}</div>
+    </div>
+  );
 }
-
-const EMPTY: Draft = {
-  title: "",
-  region: "",
-  venue: "",
-  classDate: "",
-  startTime: "",
-  endTime: "",
-  workDays: [],
-  workTime: "",
-  tourStart: "",
-  tourEnd: "",
-  destination: "",
-  destinationKind: "domestic",
-  coversFlight: false,
-  coversLodging: false,
-  negotiable: true,
-  payAmount: "",
-  payUnit: "per_class",
-  headcount: "1",
-  requirementTags: [],
-  description: "",
-  deadline: "",
-};
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -100,10 +61,6 @@ function Chip({ selected, onClick, children }: { selected: boolean; onClick: () 
   );
 }
 
-function toggle(list: string[], v: string): string[] {
-  return list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
-}
-
 /** 받침 있으면 "이", 없으면 "가" (예: 등록증이 / 자격증이 / 보험이) */
 function withJosa(word: string): string {
   const c = word.charCodeAt(word.length - 1);
@@ -115,76 +72,23 @@ function sliceTime(t: string | null): string {
   return t ? t.slice(0, 5) : "";
 }
 
-/** 입력 검사. 문제가 없으면 null. */
-function validate(type: JobType, d: Draft, today: string): string | null {
-  if (!d.title.trim()) return "제목을 입력해 주세요";
-  if (!d.region) return "지역을 골라 주세요";
-  if (type === "lesson") {
-    if (!d.classDate) return "수업 날짜를 입력해 주세요";
-    if (d.startTime && d.endTime && d.endTime <= d.startTime) return "끝나는 시간이 시작 시간보다 늦어야 해요";
-  }
-  if (type === "affiliation" && d.workDays.length === 0) return "근무 요일을 골라 주세요";
-  if (type === "tour") {
-    if (!d.tourStart || !d.tourEnd) return "투어 일정을 입력해 주세요";
-    if (d.tourEnd < d.tourStart) return "투어 끝나는 날이 시작일보다 빠를 수 없어요";
-    if (!d.destination.trim()) return "여행지를 입력해 주세요";
-  }
-  if (!d.negotiable) {
-    const n = Number(d.payAmount);
-    if (!Number.isInteger(n) || n <= 0) return "단가를 숫자로 입력하거나 협의로 바꿔 주세요";
-  }
-  const h = Number(d.headcount);
-  if (!Number.isInteger(h) || h < 1 || h > 20) return "모집 인원은 1~20명이에요";
-  if (!d.description.trim()) return "상세 설명을 입력해 주세요";
-  if (!d.deadline) return "마감일을 입력해 주세요";
-  if (d.deadline < today) return "마감일은 오늘 이후여야 해요";
-  const start = type === "lesson" ? d.classDate : type === "tour" ? d.tourStart : "";
-  if (start && d.deadline > start) return "마감일은 일정 시작일 이전이어야 해요";
-  return null;
-}
-
-function toInput(type: JobType, d: Draft): JobInput {
-  const base: JobInput = {
-    jobType: type,
-    title: d.title.trim(),
-    region: d.region,
-    venue: d.venue.trim() || null,
-    payAmount: d.negotiable ? null : Number(d.payAmount),
-    payUnit: d.negotiable ? null : d.payUnit,
-    headcount: Number(d.headcount),
-    requirementTags: d.requirementTags,
-    description: d.description.trim(),
-    deadline: d.deadline,
-  };
-  if (type === "lesson") {
-    return { ...base, classDate: d.classDate, startTime: d.startTime || null, endTime: d.endTime || null };
-  }
-  if (type === "affiliation") {
-    return { ...base, workDays: d.workDays, workTime: d.workTime.trim() || null };
-  }
-  return {
-    ...base,
-    tourStart: d.tourStart,
-    tourEnd: d.tourEnd,
-    destination: d.destination.trim(),
-    destinationKind: d.destinationKind,
-    coversFlight: d.coversFlight,
-    coversLodging: d.coversLodging,
-  };
-}
-
 export function JobForm({
   editJobId,
   onClose,
   onSaved,
   onSubmitDocs,
+  selectedCount = 0,
 }: {
   /** 있으면 수정 */
   editJobId?: string | null;
   onClose: () => void;
   onSaved: () => Promise<void> | void;
   onSubmitDocs: () => void;
+  /** 수정할 때 이미 선택된 인원(모집 인원은 이보다 줄일 수 없다) */
+  selectedCount?: number;
 }) {
+  const minHeadcount = editJobId ? selectedCount : 0;
+  const submitting = useRef(false);
   const today = todayKst();
   const editing = Boolean(editJobId);
   const [step, setStep] = useState<"type" | "fields" | "preview">(editing ? "fields" : "type");
@@ -252,6 +156,8 @@ export function JobForm({
   }, [attempt, editJobId]);
 
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((p) => ({ ...p, [k]: v }));
+  const toggleIn = (k: "workDays" | "requirementTags", v: string) =>
+    setD((p) => ({ ...p, [k]: p[k].includes(v) ? p[k].filter((x) => x !== v) : [...p[k], v] }));
 
   // 일정을 바꾸면 마감일 기본값을 따라가고, 사용자가 직접 고른 뒤에는 건드리지 않는다.
   useEffect(() => {
@@ -263,7 +169,7 @@ export function JobForm({
 
   const previewJob = useMemo<JobSummary | null>(() => {
     if (!type) return null;
-    const i = toInput(type, d);
+    const i = draftToInput(type, d);
     return {
       id: "preview",
       ownerId: "",
@@ -304,7 +210,7 @@ export function JobForm({
 
   const toPreview = () => {
     if (!type) return;
-    const msg = validate(type, d, today);
+    const msg = validateDraft(type, d, today, minHeadcount);
     if (msg) {
       toast.error(msg);
       return;
@@ -314,18 +220,23 @@ export function JobForm({
   };
 
   const submit = async () => {
-    if (!type || busy) return;
+    if (!type || submitting.current) return;
+    submitting.current = true;
     setBusy(true);
-    const input = toInput(type, d);
+    const input = draftToInput(type, d);
     const res = editJobId ? await updateJob(editJobId, input) : await createJob(input);
-    setBusy(false);
     if (res.error) {
+      submitting.current = false;
+      setBusy(false);
       toast.error(res.error);
       return;
     }
     toast.success(editJobId ? "공고를 수정했어요" : "공고를 올렸어요");
-    await onSaved();
-    onClose();
+    try {
+      await onSaved();
+    } finally {
+      onClose(); // 닫을 때까지 busy 유지 — 중복 등록 방지
+    }
   };
 
   const header = (
@@ -413,14 +324,17 @@ export function JobForm({
           <p className="mt-2 whitespace-pre-wrap text-sm text-ink">{d.description}</p>
           <p className="mt-3 text-xs text-muted">모집 {d.headcount}명 · 마감일 {d.deadline}</p>
         </section>
-        <div className="grid grid-cols-2 gap-2">
-          <Button variant="outline" className="h-[52px] border-line text-base" disabled={busy} onClick={() => setStep("fields")}>
-            고치기
-          </Button>
-          <Button className="h-[52px] bg-ink text-base text-white" disabled={busy} onClick={() => void submit()}>
-            {busy ? "올리는 중…" : editing ? "수정하기" : "올리기"}
-          </Button>
-        </div>
+        <div className="h-24" />
+        <StickyBar>
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" className="h-[52px] border-line text-base" disabled={busy} onClick={() => setStep("fields")}>
+              고치기
+            </Button>
+            <Button className="h-[52px] bg-ink text-base text-white" disabled={busy} onClick={() => void submit()}>
+              {busy ? "올리는 중…" : editing ? "수정하기" : "올리기"}
+            </Button>
+          </div>
+        </StickyBar>
       </div>
     );
   }
@@ -464,7 +378,7 @@ export function JobForm({
           <Field label="근무 요일">
             <div className="flex flex-wrap gap-2">
               {DAY_OPTIONS.map((day) => (
-                <Chip key={day} selected={d.workDays.includes(day)} onClick={() => set("workDays", toggle(d.workDays, day))}>
+                <Chip key={day} selected={d.workDays.includes(day)} onClick={() => toggleIn("workDays", day)}>
                   {day}
                 </Chip>
               ))}
@@ -497,10 +411,10 @@ export function JobForm({
           </Field>
           <Field label="센터가 부담하는 것" hint="(선택)">
             <div className="flex gap-2">
-              <Chip selected={d.coversFlight} onClick={() => set("coversFlight", !d.coversFlight)}>
+              <Chip selected={d.coversFlight} onClick={() => setD((p) => ({ ...p, coversFlight: !p.coversFlight }))}>
                 항공
               </Chip>
-              <Chip selected={d.coversLodging} onClick={() => set("coversLodging", !d.coversLodging)}>
+              <Chip selected={d.coversLodging} onClick={() => setD((p) => ({ ...p, coversLodging: !p.coversLodging }))}>
                 숙박
               </Chip>
             </div>
@@ -539,14 +453,14 @@ export function JobForm({
         )}
       </Field>
 
-      <Field label="모집 인원" hint="(1~20명)">
+      <Field label="모집 인원" hint={minHeadcount > 0 ? `(${minHeadcount}~20명 · 선택 인원과 같아지면 공고가 마감돼요)` : "(1~20명)"}>
         <Input inputMode="numeric" value={d.headcount} onChange={(e) => set("headcount", e.target.value.replace(/[^0-9]/g, "").slice(0, 2))} />
       </Field>
 
       <Field label="자격 조건" hint="(선택, 여러 개 가능)">
         <div className="flex flex-wrap gap-2">
           {REQUIREMENT_TAGS.map((t) => (
-            <Chip key={t} selected={d.requirementTags.includes(t)} onClick={() => set("requirementTags", toggle(d.requirementTags, t))}>
+            <Chip key={t} selected={d.requirementTags.includes(t)} onClick={() => toggleIn("requirementTags", t)}>
               {t}
             </Chip>
           ))}
@@ -575,9 +489,12 @@ export function JobForm({
         />
       </Field>
 
-      <Button className="h-[52px] w-full bg-ink text-base text-white" onClick={toPreview}>
-        미리보기
-      </Button>
+      <div className="h-24" />
+      <StickyBar>
+        <Button className="h-[52px] w-full bg-ink text-base text-white" onClick={toPreview}>
+          미리보기
+        </Button>
+      </StickyBar>
     </div>
   );
 }

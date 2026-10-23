@@ -132,7 +132,10 @@ export function defaultDeadline(
   dates: { classDate?: string | null; tourStart?: string | null },
   today: string,
 ): string {
-  if (type === "lesson" && dates.classDate) return addDaysYmd(dates.classDate, -1);
+  if (type === "lesson" && dates.classDate) {
+    const d = addDaysYmd(dates.classDate, -1);
+    return d < today ? today : d;
+  }
   if (type === "tour" && dates.tourStart) {
     const d = addDaysYmd(dates.tourStart, -7);
     return d < today ? today : d;
@@ -156,7 +159,7 @@ export function countApplications(
   return out;
 }
 
-const HANGUL =/[가-힣]/;
+const HANGUL = /[가-힣]/;
 
 /** RPC 오류 → 사용자용 한국어 문구. SQL이 한국어 메시지를 주면 그대로 쓴다. */
 export function jobErrorMessage(err: { code?: string | null; message?: string | null } | null | undefined): string {

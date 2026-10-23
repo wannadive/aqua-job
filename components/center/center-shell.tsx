@@ -40,7 +40,7 @@ function HomeTab({
 }: {
   onSubmitDocs: () => void;
   onNewJob: () => void;
-  stats: { open: number; applied: number; total: number };
+  stats: { open: number; applied: number; total: number } | null;
 }) {
   const { user, logout } = useAuth();
   // null = 아직 모름(안내 카드를 띄우지 않음)
@@ -85,10 +85,10 @@ function HomeTab({
   };
 
   const soon = () => toast("곧 열려요");
-  const statCards: [string, number][] = [
-    ["진행중 공고", stats.open],
-    ["대기 지원자", stats.applied],
-    ["총 지원자", stats.total],
+  const statCards: [string, number | null][] = [
+    ["진행중 공고", stats?.open ?? null],
+    ["대기 지원자", stats?.applied ?? null],
+    ["총 지원자", stats?.total ?? null],
   ];
 
   return (
@@ -124,7 +124,7 @@ function HomeTab({
         <div className="mt-3 grid grid-cols-3 gap-2 text-center">
           {statCards.map(([label, n]) => (
             <div key={label} className="rounded-xl bg-surface py-3">
-              <div className="text-xl font-bold text-ink">{n}</div>
+              <div className="text-xl font-bold text-ink">{n ?? "–"}</div>
               <div className="text-xs text-muted">{label}</div>
             </div>
           ))}
@@ -166,7 +166,7 @@ export function CenterShell() {
   const [tab, setTab] = useState<Tab>("home");
   const [overlay, setOverlay] = useState<Overlay>(null);
   const my = useMyJobs();
-  const stats = summarize(my.jobs, my.counts);
+  const stats = my.loading || my.error ? null : summarize(my.jobs, my.counts);
 
   if (overlay) {
     return (
@@ -176,6 +176,7 @@ export function CenterShell() {
             editJobId={overlay.kind === "edit" ? overlay.jobId : null}
             onClose={() => setOverlay(null)}
             onSaved={my.reload}
+            selectedCount={overlay.kind === "edit" ? (my.counts.get(overlay.jobId)?.selected ?? 0) : 0}
             onSubmitDocs={() => {
               setOverlay(null);
               setTab("settings");

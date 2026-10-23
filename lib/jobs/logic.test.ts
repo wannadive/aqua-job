@@ -170,6 +170,7 @@ test("formatMdKst: 잘못된 시각은 빈 문자열", () => {
 test("defaultDeadline", () => {
   assert.equal(addDaysYmd("2026-03-01", -1), "2026-02-28");
   assert.equal(defaultDeadline("lesson", { classDate: "2026-11-10" }, "2026-10-23"), "2026-11-09");
+  assert.equal(defaultDeadline("lesson", { classDate: "2026-10-23" }, "2026-10-23"), "2026-10-23");
   assert.equal(defaultDeadline("tour", { tourStart: "2026-12-20" }, "2026-10-23"), "2026-12-13");
   assert.equal(defaultDeadline("tour", { tourStart: "2026-10-25" }, "2026-10-23"), "2026-10-23");
   assert.equal(defaultDeadline("affiliation", {}, "2026-10-23"), "2026-11-06");
