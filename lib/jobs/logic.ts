@@ -54,7 +54,9 @@ export function formatMdWeekday(date: string): string {
 
 /** ISO 시각 → KST "M/D" */
 export function formatMdKst(iso: string): string {
-  const t = new Date(new Date(iso).getTime() + 9 * 3600e3).toISOString();
+  const ms = new Date(iso).getTime();
+  if (Number.isNaN(ms)) return "";
+  const t = new Date(ms + 9 * 3600e3).toISOString();
   return `${Number(t.slice(5, 7))}/${Number(t.slice(8, 10))}`;
 }
 
@@ -118,7 +120,43 @@ export function missingForJobType(
   return out;
 }
 
-const HANGUL = /[가-힣]/;
+/** YYYY-MM-DD에 일수를 더한다(UTC 달력 계산). */
+export function addDaysYmd(date: string, days: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** 마감일 기본값. 수업=수업 전날, 투어=출발 7일 전(오늘보다 앞서지 않게), 소속=오늘+14일. 날짜가 비면 오늘+14일. */
+export function defaultDeadline(
+  type: JobType,
+  dates: { classDate?: string | null; tourStart?: string | null },
+  today: string,
+): string {
+  if (type === "lesson" && dates.classDate) return addDaysYmd(dates.classDate, -1);
+  if (type === "tour" && dates.tourStart) {
+    const d = addDaysYmd(dates.tourStart, -7);
+    return d < today ? today : d;
+  }
+  return addDaysYmd(today, 14);
+}
+
+/** 지원 목록 → 공고별 지원 수(지원 취소 제외), 대기(applied), 선택 수 */
+export function countApplications(
+  rows: { jobId: string; status: string }[],
+): Map<string, { applied: number; selected: number; total: number }> {
+  const out = new Map<string, { applied: number; selected: number; total: number }>();
+  for (const r of rows) {
+    if (r.status === "withdrawn") continue;
+    const c = out.get(r.jobId) ?? { applied: 0, selected: 0, total: 0 };
+    c.total += 1;
+    if (r.status === "applied") c.applied += 1;
+    if (r.status === "selected") c.selected += 1;
+    out.set(r.jobId, c);
+  }
+  return out;
+}
+
+const HANGUL =/[가-힣]/;
 
 /** RPC 오류 → 사용자용 한국어 문구. SQL이 한국어 메시지를 주면 그대로 쓴다. */
 export function jobErrorMessage(err: { code?: string | null; message?: string | null } | null | undefined): string {

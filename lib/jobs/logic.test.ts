@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  addDaysYmd,
+  countApplications,
+  defaultDeadline,
   formatJobDates,
+  formatMdKst,
   formatPay,
   jobDisplayStatus,
   jobErrorMessage,
@@ -156,4 +160,29 @@ test("jobErrorMessage", () => {
   assert.match(jobErrorMessage({ code: "22P02", message: "invalid input syntax" }), /형식/);
   assert.equal(jobErrorMessage({ message: "fetch failed" }), "잠시 후 다시 시도해 주세요");
   assert.equal(jobErrorMessage(null), "잠시 후 다시 시도해 주세요");
+});
+
+test("formatMdKst: 잘못된 시각은 빈 문자열", () => {
+  assert.equal(formatMdKst("not-a-date"), "");
+  assert.equal(formatMdKst("2026-10-21T20:00:00Z"), "10/22");
+});
+
+test("defaultDeadline", () => {
+  assert.equal(addDaysYmd("2026-03-01", -1), "2026-02-28");
+  assert.equal(defaultDeadline("lesson", { classDate: "2026-11-10" }, "2026-10-23"), "2026-11-09");
+  assert.equal(defaultDeadline("tour", { tourStart: "2026-12-20" }, "2026-10-23"), "2026-12-13");
+  assert.equal(defaultDeadline("tour", { tourStart: "2026-10-25" }, "2026-10-23"), "2026-10-23");
+  assert.equal(defaultDeadline("affiliation", {}, "2026-10-23"), "2026-11-06");
+  assert.equal(defaultDeadline("lesson", {}, "2026-10-23"), "2026-11-06");
+});
+
+test("countApplications: 지원 취소 제외", () => {
+  const m = countApplications([
+    { jobId: "a", status: "applied" },
+    { jobId: "a", status: "selected" },
+    { jobId: "a", status: "withdrawn" },
+    { jobId: "b", status: "not_selected" },
+  ]);
+  assert.deepEqual(m.get("a"), { applied: 1, selected: 1, total: 2 });
+  assert.deepEqual(m.get("b"), { applied: 0, selected: 0, total: 1 });
 });

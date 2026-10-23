@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { getDeviceKey } from "@/lib/device-key";
 import type { DocRecord } from "@/lib/verification/types";
-import { jobErrorMessage } from "./logic";
+import { countApplications, jobErrorMessage } from "./logic";
 import {
   applicationFromRow,
   centerJobHistoryFromRow,
@@ -136,19 +136,34 @@ export async function listCenterJobHistory(centerId: string): Promise<CenterJobH
 
 // ---------- 읽기 (로그인) ----------
 
-/** 내(센터) 공고 전부. 저장 상태를 맞추려고 expire_jobs를 먼저 부른다. */
-export async function listMyJobs(): Promise<JobSummary[]> {
+/** 내(센터) 공고. 저장 상태를 맞추려고 expire_jobs를 먼저 부른다. 일부 공고만 못 읽으면 나머지는 보여 주고 failed 수를 돌려준다. */
+export async function listMyJobs(): Promise<{ jobs: JobSummary[]; failed: number }> {
   await expireJobsBestEffort();
   const sb = createClient();
   const { data: s } = await sb.auth.getSession();
   const uid = s.session?.user.id;
-  if (!uid) return [];
+  if (!uid) return { jobs: [], failed: 0 };
   // job_posts는 주인만 직접 읽을 수 있고, 요약 칸은 list_center_job_history로는 부족해서 id별 요약을 모은다.
   const { data, error } = await (sb as any).from("job_posts").select("id").eq("owner_id", uid).order("created_at", { ascending: false });
   if (error) fail(error);
   const ids = ((data ?? []) as any[]).map((r) => r.id as string);
-  const rows = await Promise.all(ids.map((id) => getOwnSummary(id)));
-  return rows.filter((r): r is JobSummary => r !== null);
+  const settled = await Promise.allSettled(ids.map((id) => getOwnSummary(id)));
+  const jobs: JobSummary[] = [];
+  let failed = 0;
+  for (const r of settled) {
+    if (r.status === "fulfilled") {
+      if (r.value) jobs.push(r.value);
+    } else failed += 1;
+  }
+  return { jobs, failed };
+}
+
+/** 내 공고들의 지원 현황(공고별 지원·대기·선택 수). 오류는 던진다. */
+export async function fetchMyApplicantCounts(jobIds: string[]) {
+  if (jobIds.length === 0) return countApplications([]);
+  const { data, error } = await (createClient() as any).from("job_applications").select("job_id, status").in("job_id", jobIds);
+  if (error) fail(error);
+  return countApplications(((data ?? []) as any[]).map((r) => ({ jobId: r.job_id as string, status: r.status as string })));
 }
 
 /** 숨김 공고도 주인에게는 보이도록 get_job_detail(주인·관리자는 숨김 포함)로 요약 칸을 읽는다. */

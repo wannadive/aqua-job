@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { Briefcase, Home, Search, Settings, Users } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentList } from "@/components/documents/document-list";
+import { JobForm } from "@/components/jobs/job-form";
+import { MyJobs } from "@/components/jobs/my-jobs";
+import { summarize, useMyJobs } from "@/components/jobs/use-my-jobs";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/supabase/auth-provider";
 import { fetchMyDocuments } from "@/lib/verification/api";
@@ -30,7 +33,15 @@ function ComingSoon({ title }: { title: string }) {
   );
 }
 
-function HomeTab({ onSubmitDocs }: { onSubmitDocs: () => void }) {
+function HomeTab({
+  onSubmitDocs,
+  onNewJob,
+  stats,
+}: {
+  onSubmitDocs: () => void;
+  onNewJob: () => void;
+  stats: { open: number; applied: number; total: number };
+}) {
   const { user, logout } = useAuth();
   // null = 아직 모름(안내 카드를 띄우지 않음)
   const [bizStatus, setBizStatus] = useState<{ st: DocDisplayStatus; reason: string | null } | null>(null);
@@ -74,6 +85,11 @@ function HomeTab({ onSubmitDocs }: { onSubmitDocs: () => void }) {
   };
 
   const soon = () => toast("곧 열려요");
+  const statCards: [string, number][] = [
+    ["진행중 공고", stats.open],
+    ["대기 지원자", stats.applied],
+    ["총 지원자", stats.total],
+  ];
 
   return (
     <div className="space-y-4">
@@ -106,11 +122,7 @@ function HomeTab({ onSubmitDocs }: { onSubmitDocs: () => void }) {
       <section className="rounded-card bg-white p-5 shadow-sm">
         <h2 className="text-lg font-bold text-ink">현황</h2>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-          {[
-            ["진행중 공고", 0],
-            ["대기 지원자", 0],
-            ["총 지원자", 0],
-          ].map(([label, n]) => (
+          {statCards.map(([label, n]) => (
             <div key={label} className="rounded-xl bg-surface py-3">
               <div className="text-xl font-bold text-ink">{n}</div>
               <div className="text-xs text-muted">{label}</div>
@@ -122,7 +134,7 @@ function HomeTab({ onSubmitDocs }: { onSubmitDocs: () => void }) {
       <section className="rounded-card bg-white p-5 shadow-sm">
         <h2 className="text-lg font-bold text-ink">빠른 메뉴</h2>
         <div className="mt-3 grid grid-cols-2 gap-2">
-          <button type="button" onClick={soon} className="flex min-h-[72px] flex-col items-center justify-center gap-1 rounded-xl bg-surface text-sm font-semibold text-ink">
+          <button type="button" onClick={onNewJob} className="flex min-h-[72px] flex-col items-center justify-center gap-1 rounded-xl bg-surface text-sm font-semibold text-ink">
             <Briefcase className="size-5" /> 공고 등록
           </button>
           <button type="button" onClick={soon} className="flex min-h-[72px] flex-col items-center justify-center gap-1 rounded-xl bg-surface text-sm font-semibold text-ink">
@@ -148,13 +160,51 @@ function SettingsTab() {
   );
 }
 
+type Overlay = { kind: "new" } | { kind: "edit"; jobId: string } | null;
+
 export function CenterShell() {
   const [tab, setTab] = useState<Tab>("home");
+  const [overlay, setOverlay] = useState<Overlay>(null);
+  const my = useMyJobs();
+  const stats = summarize(my.jobs, my.counts);
+
+  if (overlay) {
+    return (
+      <div className="mx-auto min-h-app w-full max-w-md">
+        <main className="px-5 pb-10 pt-4">
+          <JobForm
+            editJobId={overlay.kind === "edit" ? overlay.jobId : null}
+            onClose={() => setOverlay(null)}
+            onSaved={my.reload}
+            onSubmitDocs={() => {
+              setOverlay(null);
+              setTab("settings");
+            }}
+          />
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto min-h-app w-full max-w-md">
       <main className="px-5 pb-28 pt-8">
-        {tab === "home" && <HomeTab onSubmitDocs={() => setTab("settings")} />}
-        {tab === "jobs" && <ComingSoon title="공고" />}
+        {tab === "home" && (
+          <HomeTab onSubmitDocs={() => setTab("settings")} onNewJob={() => setOverlay({ kind: "new" })} stats={stats} />
+        )}
+        {tab === "jobs" && (
+          <MyJobs
+            jobs={my.jobs}
+            counts={my.counts}
+            loading={my.loading}
+            error={my.error}
+            onRetry={() => void my.reload()}
+            onNew={() => setOverlay({ kind: "new" })}
+            onEdit={(j) => setOverlay({ kind: "edit", jobId: j.id })}
+            onApplicants={() => setTab("applicants")}
+            onChanged={my.reload}
+          />
+        )}
         {tab === "applicants" && <ComingSoon title="지원자" />}
         {tab === "instructors" && <ComingSoon title="강사 찾기" />}
         {tab === "settings" && <SettingsTab />}
