@@ -13,7 +13,7 @@ import { sortOpenFirst } from "@/lib/jobs/logic";
 import type { JobApplication, JobSummary } from "@/lib/jobs/types";
 import { ApplicantContact } from "./applicant-contact";
 import { ApplicantResume } from "./applicant-resume";
-import { useNavigableValue } from "@/lib/navigation/use-navigable";
+import { useNavigableValue, useLeaveGuard } from "@/lib/navigation/use-navigable";
 
 const CHIP: Record<JobApplication["status"], { label: string; cls: string }> = {
   applied: { label: "지원함", cls: "bg-surface text-ink" },
@@ -69,6 +69,8 @@ export function Applicants({
   const [resumeOf, setResumeOf] = useNavigableValue<JobApplication>("v_appresume");
   const [selecting, setSelecting] = useState<JobApplication | null>(null);
   const [busy, setBusy] = useState(false);
+  // 처리하는 중에는 확인 창을 닫는 폰 뒤로가기를 조용히 되돌린다(창과 기록 칸이 어긋나지 않게, 15초 상한) — 시트와 같은 장치
+  const guard = useLeaveGuard(false, { busy: busy && selecting !== null });
   const busyRef = useRef(false);
   const [contactOpen, setContactOpen] = useState<Set<string>>(new Set());
   const seq = useRef(0);
@@ -322,7 +324,7 @@ export function Applicants({
           );
         })}
 
-      <Dialog open={selecting !== null} onOpenChange={(v) => !busy && !v && setSelecting(null)}>
+      <Dialog open={selecting !== null} onOpenChange={(v) => !v && !guard.isSending() && setSelecting(null)}>
         <DialogContent className="max-w-sm">
           <DialogTitle>{selecting?.applicantName ?? "이 지원자"}님을 선택할까요?</DialogTitle>
           <DialogDescription>선택하면 이 강사의 연락처가 열리고 되돌릴 수 없어요</DialogDescription>

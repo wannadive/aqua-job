@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } f
 import { formatMdKst } from "@/lib/jobs/logic";
 import { respondOffer } from "@/lib/offers/api";
 import { ACCEPT_CONFIRM, OFFER_STATUS_INSTRUCTOR, canAccept, canDecline, receivedGroup, type ReceivedGroup } from "@/lib/offers/logic";
+import { useLeaveGuard } from "@/lib/navigation/use-navigable";
 import type { ReceivedOffer } from "@/lib/offers/types";
 
 const GROUPS: { key: ReceivedGroup; label: string; empty: string }[] = [
@@ -45,6 +46,8 @@ export function ReceivedOffers({
   const [group, setGroup] = useState<ReceivedGroup>("pending");
   const [confirm, setConfirm] = useState<{ offer: ReceivedOffer; accept: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+  // 처리하는 중에는 확인 창을 닫는 폰 뒤로가기를 조용히 되돌린다(창과 기록 칸이 어긋나지 않게, 15초 상한) — 시트와 같은 장치
+  const guard = useLeaveGuard(false, { busy: busy && confirm !== null });
   const busyRef = useRef(false);
 
   const highlight = useFocusItem(
@@ -193,7 +196,7 @@ export function ReceivedOffers({
           );
         })}
 
-      <Dialog open={confirm !== null} onOpenChange={(v) => !busy && !v && setConfirm(null)}>
+      <Dialog open={confirm !== null} onOpenChange={(v) => !v && !guard.isSending() && setConfirm(null)}>
         <DialogContent className="max-w-sm">
           {confirm?.accept ? (
             <>

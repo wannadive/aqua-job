@@ -9,6 +9,7 @@ import { withdrawApplication } from "@/lib/jobs/api";
 import { applicationGroup, formatMdKst, type ApplicationGroup } from "@/lib/jobs/logic";
 import type { MyApplication } from "@/lib/jobs/types";
 import type { ReceivedOffer } from "@/lib/offers/types";
+import { useLeaveGuard } from "@/lib/navigation/use-navigable";
 import { JobCard } from "./job-card";
 
 const GROUPS: { key: ApplicationGroup; label: string; empty: string }[] = [
@@ -49,6 +50,8 @@ export function MyApplications({
   const [group, setGroup] = useState<ApplicationGroup>("applied");
   const [cancelling, setCancelling] = useState<MyApplication | null>(null);
   const [busy, setBusy] = useState(false);
+  // 처리하는 중에는 확인 창을 닫는 폰 뒤로가기를 조용히 되돌린다(창과 기록 칸이 어긋나지 않게, 15초 상한) — 시트와 같은 장치
+  const guard = useLeaveGuard(false, { busy: busy && cancelling !== null });
 
   const highlight = useFocusItem(
     focusJob,
@@ -207,7 +210,7 @@ export function MyApplications({
         );
       })}
 
-      <Dialog open={cancelling !== null} onOpenChange={(v) => !busy && !v && setCancelling(null)}>
+      <Dialog open={cancelling !== null} onOpenChange={(v) => !v && !guard.isSending() && setCancelling(null)}>
         <DialogContent className="max-w-sm">
           <DialogTitle>지원을 취소할까요?</DialogTitle>
           <DialogDescription>취소하면 센터의 지원자 목록에서 빠져요. 공고가 진행중이면 다시 지원할 수 있어요.</DialogDescription>

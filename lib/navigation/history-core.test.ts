@@ -23,6 +23,7 @@ function fakeBrowser(startUrl = "https://app.test/") {
   const unload: ((e: { preventDefault(): void; returnValue: unknown }) => void)[] = [];
   const confirms: string[] = [];
   let answer = true;
+  let confirmHook: (() => void) | null = null;
   let pending = 0;
   let clock = 0;
   /** 다음 go를 브라우저가 무시함(기록 그대로) */
@@ -93,6 +94,7 @@ function fakeBrowser(startUrl = "https://app.test/") {
     clearTimeout: (t) => clearTimeout(t as ReturnType<typeof setTimeout>),
     confirm: (m) => {
       confirms.push(m);
+      confirmHook?.();
       return answer;
     },
     now: () => Date.now() + clock,
@@ -122,6 +124,10 @@ function fakeBrowser(startUrl = "https://app.test/") {
     },
     silentNextGo() {
       silentGo = 1;
+    },
+    /** 확인 창이 떠 있는 동안 할 일(사용자가 오래 고민 = 시계를 앞으로) */
+    onConfirm(fn: () => void) {
+      confirmHook = fn;
     },
     setAnswer(v: boolean) {
       answer = v;
@@ -677,4 +683,72 @@ test("첫 되돌리기가 늦게 와서 재시도와 둘 다 적용돼도, 넘�
   assert.equal(nav.currentIdx, 1);
   assert.deepEqual(b.confirms, [LEAVE_TEXT], "한 번만 묻는다");
   assert.equal(b.delivered, before, "넘친 이동(하위 화면 다시 열림)은 화면에 전하지 않음");
+});
+
+// ---- 고침 4차: 확인 창이 오래 떠 있어도 바로잡기 · 진짜 뒤로가기는 먹지 않음
+
+test("사용자가 확인 창에 POP_WAIT_MS보다 오래 답해도 늦은 첫 되돌리기의 넘친 이동을 바로잡는다", async () => {
+  const { b, nav, userBack } = setup();
+  nav.pushLayer(new Map([["v_form", "1"]])); // 1
+  nav.pushLayer(new Map([["v_sub", "1"]])); // 2
+  nav.addSource(source({ param: "v_form" }));
+  userBack(); // 2 → 1
+  await b.settle();
+  b.setAnswer(false);
+  b.onConfirm(() => b.advanceClock(POP_WAIT_MS * 3)); // 확인 창에서 오래 고민
+  userBack(); // 1 → 0 → 되돌리기
+  b.delayNextGo(POP_WAIT_MS + 400); // 첫 되돌리기가 늦게 도착
+  await wait(20);
+  const before = b.delivered;
+  await wait(POP_WAIT_MS + 900);
+  await b.settle();
+  assert.equal(b.index, 1);
+  assert.equal(b.confirms.length, 1);
+  assert.equal(b.delivered, before, "넘친 이동은 화면에 전하지 않음");
+});
+
+test("다시 시도로 제자리에 온 직후 사용자가 누른 진짜 뒤로가기는 바로잡기로 먹지 않는다", async () => {
+  const { b, nav, userBack } = setup();
+  nav.pushLayer(new Map([["v_form", "1"]])); // 1
+  const src = source({ param: "v_form" });
+  nav.addSource(src);
+  b.setAnswer(false);
+  userBack(); // 1 → 0 → 되돌리기 go(+1)
+  b.ignoreNextGo(1); // 첫 되돌리기는 버려짐 → 재시도로 제자리, 바로잡기 대기 중
+  await wait(POP_WAIT_MS + 200);
+  await b.settle();
+  assert.equal(b.index, 1);
+  assert.equal(b.confirms.length, 1);
+  // 대기 시간 안에 사용자가 다시 뒤로 → 입력 화면이 닫히는 이동이므로 평소처럼 되돌리고 묻는다(삼키지 않음)
+  src.dirty = false; // 이번엔 작성 중이 아님 → 그대로 지나가야 함
+  const before = b.delivered;
+  userBack();
+  await b.settle();
+  assert.equal(b.index, 0, "진짜 뒤로가기는 지나간다");
+  assert.equal(b.delivered, before + 1, "화면에 전해짐");
+});
+
+test("바로잡기 되돌림 중 기대와 다른 popstate가 오면 바로잡기를 끝내고 평소대로 처리", async () => {
+  const { b, nav, userBack } = setup();
+  nav.pushLayer(new Map([["v_form", "1"]])); // 1
+  nav.pushLayer(new Map([["v_sub", "1"]])); // 2
+  const src = source({ param: "v_form" });
+  nav.addSource(src);
+  userBack(); // 2 → 1
+  await b.settle();
+  b.setAnswer(false);
+  userBack(); // 1 → 0
+  b.delayNextGo(POP_WAIT_MS + 400); // 늦은 첫 되돌리기
+  await wait(POP_WAIT_MS + 300); // 재시도 도착 · 묻기(취소) · 바로잡기 대기
+  b.ignoreNextGo(1); // 넘친 이동을 되돌리는 go(-1)가 버려짐 → 'returning'인 채로
+  await wait(400);
+  await b.settle();
+  assert.equal(b.index, 2, "되돌리기가 버려져 넘친 칸에 있음");
+  src.dirty = false; // 이번 이동은 보호 대상이 아님 → 평소대로 지나가야 함
+  const before = b.delivered;
+  b.env.history.go(-2); // 기대(1)와 다른 이동(2 → 0)
+  await b.settle();
+  assert.equal(b.index, 0);
+  assert.equal(nav.currentIdx, 0);
+  assert.equal(b.delivered, before + 1, "삼켜지지 않고 화면에 전해짐");
 });

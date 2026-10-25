@@ -8,6 +8,7 @@ import { formatMdKst } from "@/lib/jobs/logic";
 import type { JobSummary } from "@/lib/jobs/types";
 import { withdrawOffer } from "@/lib/offers/api";
 import { OFFER_STATUS_CENTER } from "@/lib/offers/logic";
+import { useLeaveGuard } from "@/lib/navigation/use-navigable";
 import type { Offer, OfferStatus } from "@/lib/offers/types";
 
 const TONE = { ok: "bg-ok-bg text-ok", muted: "bg-surface text-muted", ink: "bg-surface text-ink" } as const;
@@ -45,6 +46,8 @@ export function SentOffers({
   const [filter, setFilter] = useState<OfferStatus | null>(null);
   const [withdrawing, setWithdrawing] = useState<Offer | null>(null);
   const [busy, setBusy] = useState(false);
+  // 처리하는 중에는 확인 창을 닫는 폰 뒤로가기를 조용히 되돌린다(창과 기록 칸이 어긋나지 않게, 15초 상한) — 시트와 같은 장치
+  const guard = useLeaveGuard(false, { busy: busy && withdrawing !== null });
   const busyRef = useRef(false);
   const jobById = new Map(jobs.map((j) => [j.id, j]));
   const visible = filter ? offers.filter((o) => o.status === filter) : offers;
@@ -136,7 +139,7 @@ export function SentOffers({
           );
         })}
 
-      <Dialog open={withdrawing !== null} onOpenChange={(v) => !busy && !v && setWithdrawing(null)}>
+      <Dialog open={withdrawing !== null} onOpenChange={(v) => !v && !guard.isSending() && setWithdrawing(null)}>
         <DialogContent className="max-w-sm">
           <DialogTitle>제안을 철회할까요?</DialogTitle>
           <DialogDescription>철회하면 강사가 답할 수 없고, 이 공고로 같은 강사에게 다시 제안할 수 없어요</DialogDescription>
