@@ -42,7 +42,7 @@ export function ReportSheet({ target, onClose }: { target: ReportTarget | null; 
   const key = target ? `${target.type}:${target.id}` : null;
   // 작성 중 = 사유를 골랐거나 설명을 적음. 폰 뒤로가기·취소·바깥 누름 전에 묻는다
   // 보내는 중에는 묻지 않고, 시트를 닫는 폰 뒤로가기는 조용히 되돌린다(busy)
-  const guard = useLeaveGuard(key !== null && isDirty({ reason: null, note: "" }, { reason, note }), { busy });
+  const guard = useLeaveGuard(key !== null && isDirty({ reason: null, note: "" }, { reason, note }), { busy: busy && key !== null });
   const close = () => {
     if (guard.isSending() || !guard.confirmLeave()) return;
     onClose();

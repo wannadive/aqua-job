@@ -39,7 +39,7 @@ export function DocumentUploadSheet({
   const busyRef = useRef(false);
   // 작성 중 = 사진을 골랐거나 칸을 적음. 폰 뒤로가기·바깥 누름·닫기 전에 묻는다
   // 제출하는 중에는 묻지 않고, 시트를 닫는 폰 뒤로가기는 조용히 되돌린다(busy)
-  const guard = useLeaveGuard(open && (file !== null || isDirty({ org: "", grade: "", number: "" }, { org, grade, number })), { busy });
+  const guard = useLeaveGuard(open && (file !== null || isDirty({ org: "", grade: "", number: "" }, { org, grade, number })), { busy: busy && open });
 
   useEffect(() => {
     if (!open) {

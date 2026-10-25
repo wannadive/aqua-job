@@ -7,7 +7,9 @@ import {
   isLayer,
   LEAVE_TEXT,
   POP_WAIT_MS,
+  BUSY_BLOCK_MAX_MS,
   stripNavParams,
+  syncGuardSource,
   type LeaveSource,
   type NavEnv,
   type NavEvent,
@@ -22,6 +24,7 @@ function fakeBrowser(startUrl = "https://app.test/") {
   const confirms: string[] = [];
   let answer = true;
   let pending = 0;
+  let clock = 0;
   /** 다음 go를 브라우저가 무시함(기록 그대로) */
   let ignoreGo = 0;
   /** 다음 go는 기록만 움직이고 popstate를 안 보냄 */
@@ -88,6 +91,7 @@ function fakeBrowser(startUrl = "https://app.test/") {
       confirms.push(m);
       return answer;
     },
+    now: () => Date.now() + clock,
   };
 
   return {
@@ -103,6 +107,9 @@ function fakeBrowser(startUrl = "https://app.test/") {
       return delivered;
     },
     confirms,
+    advanceClock(ms: number) {
+      clock += ms;
+    },
     ignoreNextGo(n = 1) {
       ignoreGo = n;
     },
@@ -152,8 +159,9 @@ function source(
     dirty: boolean;
     sending: boolean;
   };
+  const since = Date.now();
   s.isDirty = () => s.dirty;
-  s.isBusy = () => s.sending;
+  s.busySince = () => (s.sending ? since : null);
   return s;
 }
 
@@ -563,4 +571,78 @@ test("같은 탭: 바닥이면 isAtRoot, 덮는 화면의 작성 중만 묻고 �
   assert.equal(b.confirms.length, 1);
   assert.equal(sheet.released, true);
   assert.equal(root.released, false, "바닥 화면의 입력은 그대로 보호");
+});
+
+// ---- 고침 2차: 보내기 성공 뒤 뒤로가기가 갇히던 것 · 보내는 중 상한 · 되돌리기 두 번 실패의 일관성
+
+test("회귀: 보내는 중+작성 중 → 성공(release) → 입력 비워짐(busy 남음) → 시트 닫힘 → 다음 뒤로가기는 되돌리지 않는다", async () => {
+  const { b, nav } = setup();
+  nav.pushLayer(new Map([["v_detail", "1"]])); // 공고 상세(1)
+  let closed = 0;
+  const dispose = nav.openDialog(() => closed++); // 지원 시트(2)
+  const src = source({ sending: true, dirty: true });
+  syncGuardSource(src, { dirty: true, busy: true, anchor: "dirty", currentIdx: nav.currentIdx });
+  nav.addSource(src);
+  // 성공: release → 부모가 대상을 비움(입력 dirty=false) — busy는 아직 true인 채로 화면 쪽 효과가 돈다
+  src.released = true;
+  src.dirty = false;
+  syncGuardSource(src, { dirty: false, busy: true, anchor: "dirty", currentIdx: nav.currentIdx });
+  assert.equal(src.released, true, "보내는 중이 남아 있으면 놓아 준 그대로");
+  dispose(); // 시트 닫힘 → 팝업 칸을 조용히 되돌림(nativeBack)
+  await b.settle();
+  assert.equal(b.index, 1, "팝업 칸 정리가 되돌려지지 않음(유령 칸 없음)");
+  b.env.history.back(); // 화면 안 [목록]
+  await b.settle();
+  assert.equal(b.index, 0, "다음 뒤로가기도 갇히지 않음");
+  assert.equal(b.confirms.length, 0);
+  assert.equal(closed, 0);
+  // 보내는 중이 끝나면 다시 처음 상태
+  src.sending = false;
+  syncGuardSource(src, { dirty: false, busy: false, anchor: "dirty", currentIdx: nav.currentIdx });
+  assert.equal(src.released, false);
+  assert.equal(src.idx, null);
+});
+
+test("보내는 중이 상한(BUSY_BLOCK_MAX_MS)을 넘으면 조용히 막지 않고 평소 작성 중 확인으로", async () => {
+  const { b, nav, userBack } = setup();
+  let closed = 0;
+  nav.openDialog(() => closed++);
+  nav.addSource(source({ idx: 1, sending: true, dirty: true }));
+  b.advanceClock(BUSY_BLOCK_MAX_MS + 1);
+  b.setAnswer(true);
+  userBack();
+  await b.settle();
+  assert.deepEqual(b.confirms, [LEAVE_TEXT]);
+  assert.equal(b.index, 0);
+  assert.equal(closed, 1);
+});
+
+test("보내는 중 되돌리기가 두 번 다 실패하면: 보내던 화면을 놓아 주고 닫는다(닫힘이 거절되지 않게 일관되게)", async () => {
+  const { b, nav, userBack } = setup();
+  let closed = 0;
+  nav.openDialog(() => closed++);
+  const src = source({ idx: 1, sending: true, dirty: false });
+  nav.addSource(src);
+  userBack();
+  b.ignoreNextGo(2);
+  await b.settle();
+  await wait(POP_WAIT_MS * 2 + 200);
+  assert.equal(b.confirms.length, 0);
+  assert.equal(b.index, 0);
+  assert.equal(src.released, true, "놓아 줘서 시트의 닫기(isSending)가 막지 않음");
+  assert.equal(closed, 1, "동기화 popstate로 시트가 닫힘");
+});
+
+test("다시 시도 전에 실제 칸을 다시 읽어 늦게 온 첫 되돌리기를 두 번 적용하지 않는다", async () => {
+  const { b, nav, userBack } = setup();
+  nav.pushLayer(new Map([["v_form", "1"]]));
+  nav.addSource(source({ param: "v_form" }));
+  b.setAnswer(false);
+  userBack();
+  b.silentNextGo(); // 첫 되돌리기: 기록은 제자리로 왔지만 popstate가 없음
+  await b.settle();
+  await wait(POP_WAIT_MS + 200);
+  await b.settle();
+  assert.equal(b.index, 1, "넘어가지 않고 제자리");
+  assert.equal(b.confirms.length, 1);
 });

@@ -56,7 +56,7 @@ export function OfferComposer({
   const openKey = openJobs.map((j) => j.id).join(",");
   // 작성 중 = 공고를 골랐거나 한마디를 적음. 폰 뒤로가기·취소·바깥 누름 전에 묻는다
   // 보내는 중에는 묻지 않고, 시트를 닫는 폰 뒤로가기는 조용히 되돌린다(busy)
-  const guard = useLeaveGuard(instructorId !== null && isDirty({ jobId: null, message: "" }, { jobId, message }), { busy });
+  const guard = useLeaveGuard(instructorId !== null && isDirty({ jobId: null, message: "" }, { jobId, message }), { busy: busy && instructorId !== null });
   const close = () => {
     if (busyRef.current || guard.isSending() || !guard.confirmLeave()) return;
     onClose();

@@ -39,7 +39,7 @@ export function ApplySheet({
   const jobId = job?.id ?? null;
   // 작성 중 = 한마디를 적음(열기만 한 건 아님). 폰 뒤로가기·취소·바깥 누름·이력서로 가기 전에 묻는다
   // 보내는 중에는 묻지 않고, 시트를 닫는 폰 뒤로가기는 조용히 되돌린다(busy)
-  const guard = useLeaveGuard(jobId !== null && isDirty("", message), { busy });
+  const guard = useLeaveGuard(jobId !== null && isDirty("", message), { busy: busy && jobId !== null });
   const close = () => {
     if (guard.isSending() || !guard.confirmLeave()) return;
     onClose();

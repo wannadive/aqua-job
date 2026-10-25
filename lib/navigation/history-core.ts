@@ -29,6 +29,11 @@ export const LEAVE_TEXT = "작성 중인 내용이 사라져요. 나갈까요?";
 export const BACK_PENDING_MS = 800;
 /** 되돌리기·바닥으로 가기에서 popstate를 기다리는 최대 시간 */
 export const POP_WAIT_MS = 1500;
+/**
+ * 보내는 중이 뒤로가기를 조용히 막는 최대 시간. 요청이 이보다 오래 걸리면(멈춘 요청) 막지 않고
+ * 평소처럼 작성 중 확인으로 넘긴다 — 사용자가 갇히지 않게.
+ */
+export const BUSY_BLOCK_MAX_MS = 15_000;
 
 type HistoryState = Record<string, unknown> | null | undefined;
 
@@ -56,16 +61,38 @@ export interface NavEnv {
   setTimeout(fn: () => void, ms: number): unknown;
   clearTimeout(t: unknown): void;
   confirm(message: string): boolean;
+  now(): number;
 }
 
 /** 작성 중 화면 하나. param이 있으면 그 주소 키가 사라질 때, 없으면 idx 칸 아래로 내려갈 때 닫힘으로 본다 */
 export interface LeaveSource {
   isDirty(): boolean;
-  /** 보내는 중(저장·제출 요청이 진행 중): 묻지 않고, 이 화면을 닫는 폰 뒤로가기는 조용히 되돌린다(반쯤 닫힌 화면 방지) */
-  isBusy?(): boolean;
+  /**
+   * 보내기(저장·제출 요청)를 시작한 시각, 안 보내는 중이면 null. 보내는 중에는 묻지 않고, 이 화면을 닫는
+   * 폰 뒤로가기는 조용히 되돌린다(반쯤 닫힌 화면 방지) — BUSY_BLOCK_MAX_MS까지만.
+   */
+  busySince?(): number | null;
   param: string | null;
   idx: number | null;
   released: boolean;
+}
+
+/**
+ * 화면 쪽 상태가 바뀔 때 출처를 맞춘다(useLeaveGuard가 부름 — 순수, 테스트함).
+ * - 놓아 준 표시(released)는 작성 중도 보내는 중도 아닐 때만 푼다: 저장 성공으로 놓아 준 뒤 입력이 비워져도
+ *   보내는 중이 남아 있으면 놓아 준 그대로(안 그러면 닫힌 시트가 '보내는 중'으로 남아 뒤로가기를 막는다).
+ * - anchor 'dirty'의 칸은 처음 작성 중·보내는 중이 된 순간의 칸, 둘 다 끝나면 비운다.
+ */
+export function syncGuardSource(
+  src: LeaveSource,
+  s: { dirty: boolean; busy: boolean; anchor: "param" | "mount" | "dirty"; currentIdx: number | null },
+): void {
+  if (!s.dirty && !s.busy) {
+    src.released = false;
+    if (s.anchor === "dirty") src.idx = null;
+  } else if (s.anchor === "dirty" && src.idx === null && s.currentIdx !== null) {
+    src.idx = s.currentIdx;
+  }
 }
 
 function obj(s: unknown): Record<string, unknown> {
@@ -188,7 +215,11 @@ export function createNavigation(env: NavEnv) {
   };
 
   // 놓아 준 화면(저장 성공 뒤 닫는 중 등)은 보내는 중이어도 막지 않는다 — 앱이 닫는 이동이 되돌려지지 않게
-  const busy = (src: LeaveSource) => !src.released && !!src.isBusy?.();
+  const busy = (src: LeaveSource) => {
+    if (src.released) return false;
+    const since = src.busySince?.() ?? null;
+    return since !== null && env.now() - since < BUSY_BLOCK_MAX_MS;
+  };
   /** 작성 중 = 놓아 주지 않았고, 바뀐 게 있고, 보내는 중이 아님 */
   const active = (src: LeaveSource) => !src.released && !busy(src) && src.isDirty();
   /** 이 이동(newIdx, href)이 그 화면을 닫는가 */
@@ -225,10 +256,13 @@ export function createNavigation(env: NavEnv) {
     if (!r.retried) {
       r.retried = true;
       r.timer = env.setTimeout(restoreTimedOut, POP_WAIT_MS);
-      nativeGo(r.expectIdx - curIdx);
+      // 바로 앞에서 실제 칸을 다시 읽었다(늦게 도착한 첫 되돌리기를 두 번 적용하지 않게, 남은 차이만큼만)
+      const left = r.expectIdx - idxOf(h.state);
+      if (left !== 0) nativeGo(left);
       return;
     }
     restoring = null;
+    // 두 번 다 실패: 화면을 지금 주소에 맞춘다. 보내는 중이던 화면도 놓아 줘서 닫힘이 거절되지 않게(일관되게 닫힘)
     for (const src of r.affected) src.released = true;
     syncPop(); // 화면 훅·팝업이 지금 주소·칸을 다시 읽는다
   }
@@ -264,7 +298,8 @@ export function createNavigation(env: NavEnv) {
     if (e.isTrusted && newIdx !== prevIdx) {
       const href = env.location.href;
       const sending = [...sources].filter((s) => busy(s) && closes(s, newIdx, href));
-      const affected = sending.length > 0 ? [] : [...sources].filter((s) => affectedBy(s, newIdx, href));
+      // 보내는 중이면 그 화면들만(되돌리기 실패 때 놓아 줄 대상), 아니면 작성 중 화면들
+      const affected = sending.length > 0 ? sending : [...sources].filter((s) => affectedBy(s, newIdx, href));
       if (sending.length > 0 || affected.length > 0) {
         // 이 이동이 보내는 중인 화면을 닫거나(→ 조용히 되돌림) 쓰던 내용을 지운다(→ 되돌린 뒤 확인).
         // 화면에는 전하지 않는다.

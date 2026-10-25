@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createNavigation, type LeaveSource, type Navigation } from "./history-core.ts";
+import { BUSY_BLOCK_MAX_MS, createNavigation, syncGuardSource, type LeaveSource, type Navigation } from "./history-core.ts";
 
 /**
  * 화면 이동·뒤로가기·작성 중 보호 훅(워너다이브 hooks/use-navigable.ts를 옮겨 옴). 순수 로직은 ./history-core.ts.
@@ -35,6 +35,7 @@ function getNav(): Navigation | null {
     setTimeout: (fn, ms) => window.setTimeout(fn, ms),
     clearTimeout: (t) => window.clearTimeout(t as number),
     confirm: (m) => window.confirm(m),
+    now: () => Date.now(),
   });
   w.__aquaNav = nav;
   return nav;
@@ -214,15 +215,17 @@ export function useLeaveGuard(
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   // 보내는 중(저장·제출): 묻지 않고, 이 화면을 닫는 폰 뒤로가기는 조용히 되돌린다(반쯤 닫힌 시트 방지).
-  // 실패하면 busy가 풀리면서 다시 작성 중 보호가 걸린다.
+  // 실패하면 busy가 풀리면서 다시 작성 중 보호가 걸린다. 15초가 넘으면(멈춘 요청) 막지 않는다(BUSY_BLOCK_MAX_MS).
+  // 부르는 쪽은 화면이 닫혀 있으면 busy를 false로 넘긴다(닫힌 시트가 계속 보내는 중으로 남지 않게).
   const busy = !!opts.busy;
-  const busyRef = useRef(busy);
-  busyRef.current = busy;
+  const busySinceRef = useRef<number | null>(null);
+  if (!busy) busySinceRef.current = null;
+  else if (busySinceRef.current === null) busySinceRef.current = Date.now();
   const srcRef = useRef<LeaveSource | null>(null);
   if (srcRef.current === null) {
     srcRef.current = {
       isDirty: () => dirtyRef.current,
-      isBusy: () => busyRef.current,
+      busySince: () => busySinceRef.current,
       param: opts.param ?? null,
       idx: null,
       released: false,
@@ -239,14 +242,9 @@ export function useLeaveGuard(
   }, [src, anchor]);
 
   // 다 지웠거나 저장해서 깨끗해지면 다시 처음부터(다음에 바뀌면 다시 묻는다)
+  // 보내는 중이 끝난 뒤에만 다시 걸기(syncGuardSource 참고)
   useEffect(() => {
-    const n = getNav();
-    if (!dirty) src.released = false;
-    if (!dirty && !busy) {
-      if (anchor === "dirty") src.idx = null;
-    } else if (anchor === "dirty" && src.idx === null && n) {
-      src.idx = n.currentIdx;
-    }
+    syncGuardSource(src, { dirty, busy, anchor, currentIdx: getNav()?.currentIdx ?? null });
   }, [dirty, busy, src, anchor]);
 
   const confirmLeave = useCallback(() => getNav()?.confirmLeave(src) ?? true, [src]);
@@ -254,6 +252,9 @@ export function useLeaveGuard(
     src.released = true;
   }, [src]);
   /** 보내는 중이고 아직 놓아 주지 않음 — 이때 닫기(바깥 누름·Esc 등)는 막는다. 저장 성공 뒤 release()하면 닫힘 */
-  const isSending = useCallback(() => busyRef.current && !src.released, [src]);
+  const isSending = useCallback(() => {
+    const since = busySinceRef.current;
+    return since !== null && !src.released && Date.now() - since < BUSY_BLOCK_MAX_MS;
+  }, [src]);
   return { confirmLeave, release, isSending };
 }
