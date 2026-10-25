@@ -73,7 +73,8 @@ const SIGNUP = "/?auth=signup";
 
 export function PublicJobsPage() {
   const router = useRouter();
-  return <JobList onOpenJob={(j) => router.push(`/jobs/${j.id}`)} />;
+  const viewer = useContext(ViewerContext);
+  return <JobList viewerId={viewer.userId} onOpenJob={(j) => router.push(`/jobs/${j.id}`)} />;
 }
 
 export function PublicJobPage({ id }: { id: string }) {
@@ -189,5 +190,5 @@ export function JobsBrowser({
         onSignup={noop}
       />
     );
-  return <JobList onOpenJob={(j) => push({ kind: "job", id: j.id })} />;
+  return <JobList viewerId={viewer.userId} onOpenJob={(j) => push({ kind: "job", id: j.id })} />;
 }

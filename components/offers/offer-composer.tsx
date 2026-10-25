@@ -9,7 +9,9 @@ import { listApplicantsForJobs } from "@/lib/jobs/api";
 import { formatJobDates, formatPay } from "@/lib/jobs/logic";
 import type { JobApplication, JobSummary } from "@/lib/jobs/types";
 import { sendOffer } from "@/lib/offers/api";
-import { OFFER_JOB_BLOCK_LABEL, OFFER_MESSAGE_MAX, offerJobBlock, offerLimit, offersSentFor } from "@/lib/offers/logic";
+import {
+  OFFER_JOB_BLOCK_LABEL, OFFER_LOAD_NOTE, OFFER_MESSAGE_MAX, offerJobBlock, offerLimit, offersSentFor, type OfferLoadState,
+} from "@/lib/offers/logic";
 import type { Offer } from "@/lib/offers/types";
 import { isDirty } from "@/lib/navigation/dirty";
 import { useLeaveGuard } from "@/lib/navigation/use-navigable";
@@ -23,7 +25,7 @@ export function OfferComposer({
   instructor,
   jobs,
   offers,
-  offersUnavailable = false,
+  loadState = null,
   onRetryOffers,
   onClose,
   onSent,
@@ -36,8 +38,8 @@ export function OfferComposer({
   jobs: JobSummary[];
   /** 내가 보낸 제안 전부(한도·중복 안내용) */
   offers: Offer[];
-  /** 내 공고·보낸 제안을 아직 못 읽었거나 실패 — 보내기를 막고 안내 */
-  offersUnavailable?: boolean;
+  /** 내 공고·보낸 제안 읽는 중("loading")·실패("error") — 둘 다 보내기를 막고, 상태에 맞게 안내 */
+  loadState?: OfferLoadState;
   onRetryOffers?: () => void;
   onClose: () => void;
   /** 보낸 뒤: 보낸 제안 다시 불러오기 */
@@ -54,6 +56,7 @@ export function OfferComposer({
   // 열 때마다(대상이 바뀌거나 닫힐 때마다) 바뀌는 번호 — 늦게 온 결과가 다시 연 다른 시트를 건드리지 않게
   const openSeq = useRef(0);
   const [apps, setApps] = useState<JobApplication[]>([]);
+  const offersUnavailable = loadState !== null;
   const instructorId = instructor?.id ?? null;
   const openJobs = jobs.filter((j) => j.status === "open");
   const openKey = openJobs.map((j) => j.id).join(",");
@@ -140,7 +143,7 @@ export function OfferComposer({
 
         {instructor && (
           <div className="mt-4 space-y-4">
-            {openJobs.length === 0 ? (
+            {openJobs.length === 0 && loadState !== null ? null : openJobs.length === 0 ? (
               <div className="rounded-xl bg-surface p-4 text-sm text-ink">
                 <p>모집 중인 공고가 없어요. 공고를 먼저 올려야 제안할 수 있어요.</p>
                 <Button className="mt-3 h-11 w-full bg-ink text-base text-white" onClick={onNewJob}>
@@ -203,9 +206,10 @@ export function OfferComposer({
               </div>
             )}
 
-            {offersUnavailable && (
+            {loadState === "loading" && <p className="rounded-xl bg-surface p-4 text-sm text-muted">{OFFER_LOAD_NOTE.loading}…</p>}
+            {loadState === "error" && (
               <div className="rounded-xl bg-warn-bg p-4 text-sm text-warn">
-                보낸 제안을 불러오지 못해 지금은 제안할 수 없어요
+                {OFFER_LOAD_NOTE.error}
                 {onRetryOffers && (
                   <button type="button" onClick={onRetryOffers} className="ml-3 font-semibold underline">
                     다시 시도

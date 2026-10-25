@@ -10,6 +10,7 @@ import {
   parseNotificationLink,
   readLaunchTarget,
   resolveTarget,
+  type LaunchLink,
   type NavIntent,
   type NotificationTarget,
 } from "@/lib/notifications/link";
@@ -64,7 +65,8 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
   // 푸시를 눌러 '/?tab=…'로 열렸을 때의 대상. 로그인한 활성 계정이 생기면 한 번 적용한다(메모리에만 둔다).
   const launchTarget = useRef<{ target: NotificationTarget; link: string } | null>(null);
   // 적용한 푸시 링크(그 알림을 읽음으로 바꾸는 데만 쓴다). 같은 링크가 다시 와도 다시 처리하도록 매번 새 객체
-  const [launchLink, setLaunchLink] = useState<{ link: string } | null>(null);
+  // 그때 계정 id와 함께 둔다 — 계정이 바뀐 직후 남은 값으로 다른 계정 알림을 읽음 처리하지 않게(launchLinkFor)
+  const [launchLink, setLaunchLink] = useState<LaunchLink | null>(null);
   const userId = user?.id ?? null;
   const ready_ = !!user && user.accountStatus === "active";
 
@@ -141,7 +143,7 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
       const link = r.link;
       leaveToRoot(() => {
         goTargetRef.current(r.target);
-        setLaunchLink({ link });
+        setLaunchLink({ userId: user.id, link });
       });
     },
     [user],
@@ -183,7 +185,7 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     launchTarget.current = null;
     if (ready_) {
       goTarget(t.target);
-      setLaunchLink({ link: t.link });
+      setLaunchLink({ userId: user.id, link: t.link });
     }
   }, [isLoading, user, ready_, goTarget]);
 
@@ -195,10 +197,17 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     setIntroSeen(readIntroSeen());
     // 공유 링크에서 온 /?auth=login | signup 은 도입부 없이 해당 화면으로(두 값만 허용)
     try {
-      const a = new URLSearchParams(window.location.search).get("auth");
+      const params = new URLSearchParams(window.location.search);
+      const a = params.get("auth");
       if (a === "login" || a === "signup") {
         setIntroSeen(true);
         setAuthView(a === "signup" ? "signup-select" : "login");
+      }
+      // 읽었으면 주소창에서 지운다(로그인 뒤·뒤로 가기·공유에 ?auth가 남지 않게). 다른 쿼리는 그대로
+      if (params.has("auth")) {
+        params.delete("auth");
+        const rest = params.toString();
+        window.history.replaceState(window.history.state, "", window.location.pathname + (rest ? `?${rest}` : "") + window.location.hash);
       }
     } catch {
       /* ignore */
@@ -249,7 +258,7 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
   // 알림 상태는 사용자마다 따로(key) — 계정이 바뀌면 통째로 새로 만든다.
   const withRoleTabs = (screen: ReactNode) =>
     user && shownRole ? (
-      <NotificationsProvider key={user.id} onOpenLink={openLink} scope={shownRole} launchLink={launchLink}>
+      <NotificationsProvider key={user.id} userId={user.id} onOpenLink={openLink} scope={shownRole} launchLink={launchLink}>
         <div style={{ ["--role-tabs-h" as string]: TOP_BAR_HEIGHT(user.roles.length > 1) }}>
           <header className="sticky top-0 z-20 bg-bg pt-[env(safe-area-inset-top)]">
             {user.roles.length > 1 && (

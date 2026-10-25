@@ -9,7 +9,7 @@ import { listApplicantsForJobs, selectApplicant } from "@/lib/jobs/api";
 import { canSelect, filterApplicants, formatAppliedAt } from "@/lib/jobs/applicants";
 import { filledCount } from "@/lib/offers/logic";
 import type { Offer } from "@/lib/offers/types";
-import { sortOpenFirst } from "@/lib/jobs/logic";
+import { closedNotice, sortOpenFirst } from "@/lib/jobs/logic";
 import type { JobApplication, JobSummary } from "@/lib/jobs/types";
 import { ApplicantContact } from "./applicant-contact";
 import { ApplicantResume } from "./applicant-resume";
@@ -138,9 +138,9 @@ export function Applicants({
       // 마감 안내는 선택 뒤 새로 읽은 공고 상태로만 판단한다(누르기 전 숫자로 추측하지 않음)
       const [, fresh] = await Promise.all([reload(), onChanged()]);
       const job = Array.isArray(fresh) ? fresh.find((j) => j.id === target.jobId) : undefined;
-      if (job && job.status !== "open") {
-        toast("모집 인원이 다 차서 공고가 마감됐어요");
-      }
+      // 실제 마감 이유(인원 참·기간 지남·직접 마감)대로 — "인원이 다 차서"는 인원이 찼을 때만
+      const notice = job ? closedNotice(job.status) : null;
+      if (notice) toast(notice);
     } finally {
       busyRef.current = false;
       setBusy(false);

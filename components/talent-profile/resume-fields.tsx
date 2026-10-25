@@ -7,10 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { avatarUrl, uploadAvatar } from "@/lib/avatar/api";
 import {
-  AGE_BAND_OPTIONS, CERT_ORG_OPTIONS, DAY_OPTIONS, GENDER_OPTIONS, MBTI_OPTIONS,
+  AGE_BAND_OPTIONS, CERT_LEVEL_OTHER, CERT_ORG_OPTIONS, DAY_OPTIONS, GENDER_OPTIONS, MBTI_OPTIONS,
   REGION_OPTIONS, SCOPE_OPTIONS, STYLE_TAG_OPTIONS, TIME_OPTIONS,
 } from "@/lib/talent-profile/config";
-import { formatRecords, METER_MAX, parseMeterInput, parseStaInput } from "@/lib/talent-profile/logic";
+import {
+  canonicalCertOrg, certLevelChoice, certLevelOptions, formatRecords, METER_MAX, parseMeterInput, parseStaInput,
+} from "@/lib/talent-profile/logic";
 import type { InstructorProfile, Records, ResumeStep, Scope } from "@/lib/talent-profile/types";
 
 export type Draft = Partial<InstructorProfile>;
@@ -106,36 +108,98 @@ function RecordsInput({ value, onChange }: { value: Records; onChange: (r: Recor
 
 function CertsInput({ draft, setDraft }: { draft: Draft; setDraft: (p: Draft) => void }) {
   const certs = draft.certifications && draft.certifications.length > 0 ? draft.certifications : [{ org: "", level: "" }];
+  // "기타(직접 입력)"을 눌렀지만 아직 글자를 안 적은 줄(저장 값만으로는 구분이 안 돼서 화면에만 둔다)
+  const [otherOpen, setOtherOpen] = useState<boolean[]>([]);
+  const setOther = (i: number, on: boolean) => setOtherOpen((prev) => {
+    const next = [...prev];
+    next[i] = on;
+    return next;
+  });
   const update = (i: number, patch: Partial<{ org: string; level: string }>) =>
     setDraft({ certifications: certs.map((c, idx) => (idx === i ? { ...c, ...patch } : c)) });
+  const remove = (i: number) => {
+    setOtherOpen((prev) => prev.filter((_, idx) => idx !== i));
+    setDraft({ certifications: certs.filter((_, idx) => idx !== i) });
+  };
   return (
     <div className="space-y-4">
-      {certs.map((c, i) => (
-        <div key={i} className="space-y-2 rounded-card bg-white p-3">
-          <div className="flex flex-wrap gap-2">
-            {CERT_ORG_OPTIONS.map((o) => (
-              <button
-                key={o}
-                type="button"
-                aria-pressed={c.org === o}
-                onClick={() => update(i, { org: o })}
-                className={`rounded-full border px-3 py-2 text-sm font-medium ${c.org === o ? "border-accent bg-ok-bg text-ok" : "border-line text-ink"}`}
-              >
-                {o}
-              </button>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input placeholder="등급 (예: 강사 트레이너)" value={c.level} onChange={(e) => update(i, { level: e.target.value })} className="h-12" />
-            {certs.length > 1 && (
-              <button type="button" aria-label="삭제" onClick={() => setDraft({ certifications: certs.filter((_, idx) => idx !== i) })} className="px-2 text-muted">
-                <X className="size-5" />
-              </button>
+      {certs.map((c, i) => {
+        const org = canonicalCertOrg(c.org);
+        const levels = certLevelOptions(c.org);
+        const choice = certLevelChoice(c.org, c.level);
+        // 목록이 없는 단체(기타)는 늘 직접 입력. 목록에 없는 예전 값도 직접 입력 칸에 그대로
+        const typing = levels.length === 0 || choice.kind === "other" || (choice.kind === "none" && !!otherOpen[i]);
+        return (
+          <div key={i} className="space-y-3 rounded-card bg-white p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex flex-wrap gap-2">
+                {CERT_ORG_OPTIONS.map((o) => (
+                  <button
+                    key={o}
+                    type="button"
+                    aria-pressed={org === o}
+                    onClick={() => {
+                      if (org === o) return;
+                      // 단체를 바꾸면 등급은 새로 고른다(다른 단체의 등급이 남지 않게)
+                      setOther(i, false);
+                      update(i, { org: o, level: "" });
+                    }}
+                    className={`rounded-full border px-3 py-2 text-sm font-medium ${org === o ? "border-accent bg-ok-bg text-ok" : "border-line text-ink"}`}
+                  >
+                    {o}
+                  </button>
+                ))}
+              </div>
+              {certs.length > 1 && (
+                <button type="button" aria-label="자격 삭제" onClick={() => remove(i)} className="flex size-10 shrink-0 items-center justify-center text-muted">
+                  <X className="size-5" />
+                </button>
+              )}
+            </div>
+            {c.org.trim() && levels.length > 0 && (
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="등급">
+                {[...levels, CERT_LEVEL_OTHER].map((l) => {
+                  const isOther = l === CERT_LEVEL_OTHER;
+                  const on = isOther ? typing : choice.kind === "list" && choice.value === l;
+                  return (
+                    <button
+                      key={l}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      onClick={() => {
+                        if (isOther) {
+                          if (typing) return;
+                          setOther(i, true);
+                          update(i, { level: "" });
+                        } else {
+                          setOther(i, false);
+                          update(i, { level: l });
+                        }
+                      }}
+                      className={`rounded-full border px-3 py-2 text-sm font-medium ${on ? "border-accent bg-ok-bg text-ok" : "border-line text-ink"}`}
+                    >
+                      {l}
+                    </button>
+                  );
+                })}
+              </div>
             )}
+            {(c.org.trim() || c.level) && typing && (
+              <Input
+                aria-label="등급 직접 입력"
+                placeholder={levels.length > 0 ? "목록에 없는 등급을 적어 주세요" : "단체와 등급을 적어 주세요"}
+                maxLength={40}
+                value={c.level}
+                onChange={(e) => update(i, { level: e.target.value })}
+                className="h-12"
+              />
+            )}
+            {!c.org.trim() && !c.level && <p className="text-xs text-muted">단체를 먼저 골라 주세요</p>}
           </div>
-        </div>
-      ))}
-      <button type="button" onClick={() => setDraft({ certifications: [...certs, { org: "", level: "" }] })} className="flex items-center gap-1 text-sm font-semibold text-ok">
+        );
+      })}
+      <button type="button" onClick={() => setDraft({ certifications: [...certs, { org: "", level: "" }] })} className="flex min-h-11 items-center gap-1 text-sm font-semibold text-ok">
         <Plus className="size-4" /> 자격 추가
       </button>
     </div>

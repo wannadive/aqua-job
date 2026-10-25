@@ -67,7 +67,8 @@ lib/app-shell/
 lib/jobs/ + components/jobs/                       공고·지원 (device-key.ts 포함)
 lib/verification/ + components/verification/       서류 확인 (document-*, fact-badge)
                   components/verification/admin/   review-queue(원본 삭제 대기 목록 `PendingPurges` 포함), review-detail
-lib/talent-profile/ + components/talent-profile/   강사 이력서 (resume-*)
+lib/talent-profile/ + components/talent-profile/   강사 이력서 (resume-*) · 자격 단체·등급 목록(config `CERT_LEVELS`)과
+                                                   판정(logic `certLevelChoice`·`formatCert`) — 강사 찾기 필터(lib/offers)도 이것을 쓴다
 lib/center-listing/ + components/center-listing/   센터 소개 (center-profile-form)
 lib/avatar/api.ts                                  아바타 업로드/URL
 lib/notifications/ + components/notifications/     앱 안 알림(종·목록·모두 읽음)·푸시 켜기/끄기·로그아웃 때 구독 정리,

@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { listPublicJobs } from "@/lib/jobs/api";
-import { sortOpenFirst } from "@/lib/jobs/logic";
+import { isOwnJob, sortOpenFirst } from "@/lib/jobs/logic";
 import type { JobSummary } from "@/lib/jobs/types";
 import { EMPTY_FILTERS, JobFilters, type JobFilterState } from "./job-filters";
 import { JobCard } from "./job-card";
 
-/** 공개 공고 목록. 서버(list_public_jobs)가 돌려준 요약만 쓴다. */
-export function JobList({ onOpenJob }: { onOpenJob: (job: JobSummary) => void }) {
+/** 공개 공고 목록. 서버(list_public_jobs)가 돌려준 요약만 쓴다. viewerId가 주인인 공고에는 "내 공고" 꼬리표 */
+export function JobList({ onOpenJob, viewerId = null }: { onOpenJob: (job: JobSummary) => void; viewerId?: string | null }) {
   const [filters, setFilters] = useState<JobFilterState>(EMPTY_FILTERS);
   const [jobs, setJobs] = useState<JobSummary[] | null>(null);
   const [error, setError] = useState(false);
@@ -44,7 +44,7 @@ export function JobList({ onOpenJob }: { onOpenJob: (job: JobSummary) => void })
       ) : (
         <div className="space-y-3">
           {jobs.map((j) => (
-            <JobCard key={j.id} job={j} showStatus maxTags={2} dimmed={j.status !== "open"} onOpen={() => onOpenJob(j)} />
+            <JobCard key={j.id} job={j} showStatus maxTags={2} dimmed={j.status !== "open"} mine={isOwnJob(j, viewerId)} onOpen={() => onOpenJob(j)} />
           ))}
         </div>
       )}

@@ -153,3 +153,19 @@ export function initialOf(name: string | null | undefined): string {
   if (!s) return "?";
   return Array.from(s)[0].toUpperCase();
 }
+
+/**
+ * 제안 쓰기에 필요한 내 공고·보낸 제안 읽기 상태. 하나라도 실패면 "error"(다시 시도 안내),
+ * 아니면 하나라도 읽는 중이면 "loading", 다 읽었으면 null. 실패 문구는 실패했을 때만 보인다.
+ */
+export type OfferLoadState = "loading" | "error" | null;
+export function offerLoadState(s: { jobsLoading: boolean; jobsError: boolean; offersLoading: boolean; offersError: boolean }): OfferLoadState {
+  if (s.jobsError || s.offersError) return "error";
+  if (s.jobsLoading || s.offersLoading) return "loading";
+  return null;
+}
+
+export const OFFER_LOAD_NOTE: Record<Exclude<OfferLoadState, null>, string> = {
+  loading: "내 공고와 보낸 제안을 불러오는 중이에요",
+  error: "내 공고·보낸 제안을 불러오지 못해 지금은 제안할 수 없어요",
+};

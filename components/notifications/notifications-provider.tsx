@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { toast } from "sonner";
 import { fetchUnreadCount, listNotifications, markAllRead, markRead, markReadByLink } from "@/lib/notifications/api";
 import { NOTIFICATION_PAGE_SIZE } from "@/lib/notifications/config";
+import { launchLinkFor, type LaunchLink } from "@/lib/notifications/link";
 import { canLoadMore, nextListLimit, shouldRefresh, UNREAD_POLL_MS } from "@/lib/notifications/format";
 import { disablePush, enablePush, readPushState, registerServiceWorker } from "@/lib/notifications/push-client";
 import type { PushState } from "@/lib/notifications/push-state";
@@ -64,12 +65,15 @@ export function NotificationsProvider({
   onOpenLink,
   scope,
   launchLink = null,
+  userId,
 }: {
   children: ReactNode;
+  /** 이 알림 상태의 주인(로그인한 계정 id). launchLink는 같은 계정 것일 때만 쓴다 */
+  userId: string;
   /** false = 이동하지 않음(작성 중이라 머물기로 함) */
   onOpenLink: (link: string | null) => boolean | void;
-  /** 푸시를 눌러 열린 앱 안 주소(검증된 것). 그 링크의 내 안 읽은 알림을 읽음으로 바꾼다(새 객체마다 한 번) */
-  launchLink?: { link: string } | null;
+  /** 푸시를 눌러 열린 앱 안 주소(검증된 것)와 그때 계정. 내 계정 것이면 그 링크의 안 읽은 알림을 읽음으로(새 객체마다 한 번) */
+  launchLink?: LaunchLink | null;
   /** 보고 있는 역할 화면. 바뀌면 열린 목록을 닫는다 */
   scope?: string | null;
 }) {
@@ -251,14 +255,15 @@ export function NotificationsProvider({
   }, [refreshUnread, loadList]);
 
   // 푸시로 열린 링크의 알림 읽음 표시(한 번만, 실패는 조용히) → 개수 다시
-  const launchDone = useRef<{ link: string } | null>(null);
+  const launchDone = useRef<LaunchLink | null>(null);
   useEffect(() => {
-    if (!launchLink || launchDone.current === launchLink) return;
+    const link = launchLinkFor(launchLink, userId);
+    if (!launchLink || link === null || launchDone.current === launchLink) return;
     launchDone.current = launchLink;
-    void markReadByLink(launchLink.link).then(() => {
+    void markReadByLink(link).then(() => {
       if (alive.current) void refreshUnread(true);
     });
-  }, [launchLink, refreshUnread]);
+  }, [launchLink, userId, refreshUnread]);
 
   // ---- 푸시
   const refreshPush = useCallback(async () => {

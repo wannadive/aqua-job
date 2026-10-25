@@ -159,3 +159,15 @@ test("mappers: offerFromRow 이름 조인, browseInstructorFromRow 서류 사실
   assert.equal("phone" in b, false);
   assert.equal("email" in b, false);
 });
+
+test("offerLoadState: 실패가 먼저, 그다음 읽는 중, 다 읽으면 null", async () => {
+  const { offerLoadState, OFFER_LOAD_NOTE } = await import("./logic.ts");
+  const base = { jobsLoading: false, jobsError: false, offersLoading: false, offersError: false };
+  assert.equal(offerLoadState(base), null);
+  assert.equal(offerLoadState({ ...base, offersLoading: true }), "loading");
+  assert.equal(offerLoadState({ ...base, jobsLoading: true }), "loading");
+  assert.equal(offerLoadState({ ...base, offersError: true }), "error");
+  assert.equal(offerLoadState({ ...base, jobsError: true, offersLoading: true }), "error");
+  assert.ok(!OFFER_LOAD_NOTE.loading.includes("못"));
+  assert.ok(OFFER_LOAD_NOTE.error.includes("불러오지 못해"));
+});

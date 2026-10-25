@@ -4,6 +4,7 @@ import { avatarUrl } from "@/lib/avatar/api";
 import { initialOf } from "@/lib/offers/logic";
 import type { BrowseInstructor } from "@/lib/offers/types";
 import { SCOPE_OPTIONS } from "@/lib/talent-profile/config";
+import { formatCert } from "@/lib/talent-profile/logic";
 import { DOC_TYPES } from "@/lib/verification/config";
 import { publicFacts } from "@/lib/verification/effective";
 import { todayKst } from "@/lib/verification/logic";
@@ -45,7 +46,7 @@ export function InstructorCard({
 }) {
   const facts = publicFacts(t.facts, todayKst()).filter((f) => DOC_TYPES[f.type].owner === "instructor");
   const basics = [t.gender, t.ageBand].filter(Boolean).join(" · ");
-  const certs = t.certifications.filter((c) => c.org || c.level).map((c) => [c.org, c.level].filter(Boolean).join(" "));
+  const certs = t.certifications.filter((c) => c.org || c.level).map(formatCert);
   const career = [t.instructorLevel, t.instructorYears != null ? `강사 경력 ${t.instructorYears}년` : null, certs.join(", ")]
     .filter((x) => x && x.length > 0)
     .join(" · ");
