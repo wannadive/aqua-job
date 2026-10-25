@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CERT_LEVEL_OTHER, CERT_LEVELS, CERT_ORG_OPTIONS } from "./config.ts";
-import { canonicalCertOrg, certLevelChoice, certLevelOptions, formatCert } from "./logic.ts";
+import { canonicalCertOrg, certLevelChoice, certLevelOptions, formatCert, isCertLevelTyping, levelAfterOrgPick } from "./logic.ts";
 import { buildBrowseFilters } from "../offers/logic.ts";
 import { EMPTY_INSTRUCTOR_FILTERS } from "../offers/logic.ts";
 
@@ -66,5 +66,28 @@ test("formatCert: 등급이 단체 이름으로 시작하면 한 번만", () => 
   assert.equal(formatCert({ org: "AIDA", level: "Instructor" }), "AIDA Instructor");
   assert.equal(formatCert({ org: "SSI", level: "" }), "SSI");
   assert.equal(formatCert({ org: "", level: "강사" }), "강사");
-  assert.equal(formatCert({ org: "기타", level: "Apnea Academy 강사" }), "기타 Apnea Academy 강사");
+  assert.equal(formatCert({ org: "기타", level: "Apnea Academy 강사" }), "Apnea Academy 강사");
+  assert.equal(formatCert({ org: "기타", level: "" }), "기타");
+});
+
+test("isCertLevelTyping: 직접 입력 중엔 글자가 목록 값과 같아지거나 비어도 칸 유지", () => {
+  // (a) 기타(직접 입력)에서 "Instructor (pool)"을 적는 도중 "Instructor"가 돼도
+  assert.equal(isCertLevelTyping("AIDA", "Instructor", true), true);
+  // (b) 예전 값 "강사 트레이너"를 다 지워도(입력하면 otherOpen이 켜진다)
+  assert.equal(isCertLevelTyping("AIDA", "", true), true);
+  // 목록에 없는 예전 값은 처음부터 직접 입력
+  assert.equal(isCertLevelTyping("AIDA", "강사 트레이너", false), true);
+  // 목록에서 고른 값·빈 칸은 직접 입력 아님
+  assert.equal(isCertLevelTyping("AIDA", "Instructor", false), false);
+  assert.equal(isCertLevelTyping("AIDA", "", false), false);
+  // 목록 없는 단체는 늘 직접 입력
+  assert.equal(isCertLevelTyping("기타", "", false), true);
+  assert.equal(isCertLevelTyping("", "", false), true);
+});
+
+test("levelAfterOrgPick: 단체 없던 예전 줄은 등급을 지키고, 단체를 바꾸면 초기화", () => {
+  assert.deepEqual(levelAfterOrgPick("", "aida2", "AIDA"), { level: "aida2", otherOpen: false });
+  assert.deepEqual(levelAfterOrgPick("", "강사", "AIDA"), { level: "강사", otherOpen: true });
+  assert.deepEqual(levelAfterOrgPick("", "", "AIDA"), { level: "", otherOpen: false });
+  assert.deepEqual(levelAfterOrgPick("AIDA", "Instructor", "PADI"), { level: "", otherOpen: false });
 });

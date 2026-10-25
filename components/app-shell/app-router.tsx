@@ -15,6 +15,7 @@ import {
   type NotificationTarget,
 } from "@/lib/notifications/link";
 import { readSwOpenLink, SW_ACK, type SwOpenLink } from "@/lib/notifications/sw-message";
+import { AUTH_VIEW_KEY, parseAuthView, serializeAuthView } from "@/lib/app-shell/auth-view";
 import { cleanNavOnLoad, leaveToRoot, resetNavToRoot } from "@/lib/navigation/use-navigable";
 import { LoginForm } from "@/components/app-shell/auth/login-form";
 import { SignupForm } from "@/components/app-shell/auth/signup-form";
@@ -127,14 +128,8 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
   // 열린 앱 창에서 푸시를 누름(public/sw.js가 보낸 메시지) — 새로 고침 없이 종과 같은 길로 이동
   const handleSwLink = useCallback(
     (r: Exclude<SwOpenLink, { kind: "ignore" }>) => {
-      if (!user) {
-        // 로그인 전이면 로그인한 뒤 한 번 적용(첫 화면 주소의 푸시 링크와 같은 처리)
-        if (r.kind === "open") {
-          launchTarget.current = { target: r.target, link: r.link };
-          setIntroSeen(true);
-        }
-        return;
-      }
+      // 로그인돼 있지 않으면 버린다(나중에 로그인하는 계정이 그 푸시의 주인이라는 보장이 없음)
+      if (!user) return;
       if (user.accountStatus !== "active") return;
       if (r.kind === "invalid") {
         toast(NAV_FAIL_TEXT.invalid);
@@ -177,13 +172,15 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
 
   const consumeNav = useCallback(() => setNav(null), []);
 
-  // 첫 화면 주소의 알림 링크: 로그인한 활성 계정이 준비되면 적용(정지·퇴출이면 버림)
+  // 첫 화면 주소의 알림 링크: 세션 복원이 끝났을 때 로그인돼 있던 활성 계정에만 적용(정지·퇴출이면 버림).
+  // 그때 로그인돼 있지 않았으면 버린다 — 푸시는 로그인한 기기 구독으로만 오고 로그아웃하면 구독이 지워지므로,
+  // 나중에 로그인하는 계정이 그 푸시의 주인이라는 보장이 없다(다른 계정에 남의 알림 대상이 적용되지 않게).
   useEffect(() => {
-    if (isLoading || !user) return;
+    if (isLoading) return;
     const t = launchTarget.current;
     if (!t) return;
     launchTarget.current = null;
-    if (ready_) {
+    if (user && ready_) {
       goTarget(t.target);
       setLaunchLink({ userId: user.id, link: t.link });
     }
@@ -202,6 +199,19 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
       if (a === "login" || a === "signup") {
         setIntroSeen(true);
         setAuthView(a === "signup" ? "signup-select" : "login");
+      } else {
+        // ?auth를 지웠으니 새로 고침 때는 이 탭에 저장해 둔 로그인 전 화면으로(없거나 못 읽으면 처음 화면)
+        let stored: ReturnType<typeof parseAuthView> = null;
+        try {
+          stored = parseAuthView(window.sessionStorage.getItem(AUTH_VIEW_KEY));
+        } catch {
+          /* ignore */
+        }
+        if (stored && !adminEntry) {
+          setIntroSeen(true);
+          setAuthView(stored.view);
+          setSignupRole(stored.role);
+        }
       }
       // 읽었으면 주소창에서 지운다(로그인 뒤·뒤로 가기·공유에 ?auth가 남지 않게). 다른 쿼리는 그대로
       if (params.has("auth")) {
@@ -228,6 +238,17 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     cleanNavOnLoad();
     setReady(true);
   }, []);
+
+  // 로그인 전 화면을 이 탭에 저장(새로 고침해도 그 화면). 로그인하면 지운다. 도입부·/admin 입구는 저장하지 않는다
+  useEffect(() => {
+    if (!ready || isLoading) return;
+    try {
+      if (user) window.sessionStorage.removeItem(AUTH_VIEW_KEY);
+      else if (introSeen && !adminEntry) window.sessionStorage.setItem(AUTH_VIEW_KEY, serializeAuthView({ view: authView, role: signupRole }));
+    } catch {
+      /* ignore */
+    }
+  }, [ready, isLoading, user, introSeen, adminEntry, authView, signupRole]);
 
   if (isLoading || !ready) {
     return <main className="flex min-h-dvh items-center justify-center text-sm text-muted">불러오는 중…</main>;

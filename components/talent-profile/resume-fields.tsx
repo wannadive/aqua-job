@@ -11,7 +11,7 @@ import {
   REGION_OPTIONS, SCOPE_OPTIONS, STYLE_TAG_OPTIONS, TIME_OPTIONS,
 } from "@/lib/talent-profile/config";
 import {
-  canonicalCertOrg, certLevelChoice, certLevelOptions, formatRecords, METER_MAX, parseMeterInput, parseStaInput,
+  canonicalCertOrg, certLevelChoice, certLevelOptions, formatRecords, isCertLevelTyping, levelAfterOrgPick, METER_MAX, parseMeterInput, parseStaInput,
 } from "@/lib/talent-profile/logic";
 import type { InstructorProfile, Records, ResumeStep, Scope } from "@/lib/talent-profile/types";
 
@@ -127,8 +127,9 @@ function CertsInput({ draft, setDraft }: { draft: Draft; setDraft: (p: Draft) =>
         const org = canonicalCertOrg(c.org);
         const levels = certLevelOptions(c.org);
         const choice = certLevelChoice(c.org, c.level);
-        // 목록이 없는 단체(기타)는 늘 직접 입력. 목록에 없는 예전 값도 직접 입력 칸에 그대로
-        const typing = levels.length === 0 || choice.kind === "other" || (choice.kind === "none" && !!otherOpen[i]);
+        // 목록이 없는 단체(기타)는 늘 직접 입력. 목록에 없는 예전 값도 직접 입력 칸에 그대로.
+        // 한 번 직접 입력에 들어간 줄은 글자가 목록 값과 같아지거나 비어도 칸을 유지(isCertLevelTyping)
+        const typing = isCertLevelTyping(c.org, c.level, !!otherOpen[i]);
         return (
           <div key={i} className="space-y-3 rounded-card bg-white p-3">
             <div className="flex items-start justify-between gap-2">
@@ -140,9 +141,10 @@ function CertsInput({ draft, setDraft }: { draft: Draft; setDraft: (p: Draft) =>
                     aria-pressed={org === o}
                     onClick={() => {
                       if (org === o) return;
-                      // 단체를 바꾸면 등급은 새로 고른다(다른 단체의 등급이 남지 않게)
-                      setOther(i, false);
-                      update(i, { org: o, level: "" });
+                      // 단체를 바꾸면 등급은 새로 고른다(다른 단체의 등급이 남지 않게). 단체 없던 예전 줄은 등급을 지키고
+                      const next = levelAfterOrgPick(c.org, c.level, o);
+                      setOther(i, next.otherOpen);
+                      update(i, { org: o, level: next.level });
                     }}
                     className={`rounded-full border px-3 py-2 text-sm font-medium ${org === o ? "border-accent bg-ok-bg text-ok" : "border-line text-ink"}`}
                   >
@@ -160,7 +162,7 @@ function CertsInput({ draft, setDraft }: { draft: Draft; setDraft: (p: Draft) =>
               <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="등급">
                 {[...levels, CERT_LEVEL_OTHER].map((l) => {
                   const isOther = l === CERT_LEVEL_OTHER;
-                  const on = isOther ? typing : choice.kind === "list" && choice.value === l;
+                  const on = isOther ? typing : !typing && choice.kind === "list" && choice.value === l;
                   return (
                     <button
                       key={l}
@@ -191,7 +193,11 @@ function CertsInput({ draft, setDraft }: { draft: Draft; setDraft: (p: Draft) =>
                 placeholder={levels.length > 0 ? "목록에 없는 등급을 적어 주세요" : "단체와 등급을 적어 주세요"}
                 maxLength={40}
                 value={c.level}
-                onChange={(e) => update(i, { level: e.target.value })}
+                onChange={(e) => {
+                  // 적는 동안 칸이 사라지지 않게 이 줄을 직접 입력 모드로 고정
+                  if (!otherOpen[i]) setOther(i, true);
+                  update(i, { level: e.target.value });
+                }}
                 className="h-12"
               />
             )}

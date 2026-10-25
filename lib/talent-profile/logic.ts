@@ -101,10 +101,31 @@ export function certLevelChoice(org: string | null | undefined, level: string | 
   return hit ? { kind: "list", value: hit } : { kind: "other", text: level ?? "" };
 }
 
-/** 자격 한 줄 표시. 등급이 단체 이름으로 시작하면(AIDA2) 단체를 두 번 쓰지 않는다 */
+/** 자격 한 줄 표시. 등급이 단체 이름으로 시작하면(AIDA2) 단체를 두 번 쓰지 않고, 기타 단체는 적은 글자만 */
 export function formatCert(c: { org: string; level: string }): string {
   const org = c.org.trim();
   const level = c.level.trim();
+  // "기타" 단체는 적은 등급(단체 이름 포함)만 보인다
+  if (org === "기타") return level || org;
   if (org && level.toLowerCase().startsWith(org.toLowerCase())) return level;
   return [org, level].filter(Boolean).join(" ");
+}
+
+/**
+ * 등급 칸이 직접 입력 모드인가. 한 번 직접 입력 모드에 들어간 줄(otherOpen)은 적은 글자가 목록 값과 같아지거나
+ * 비어도 입력 칸을 유지한다(입력 중 칸이 사라져 폰 키보드가 닫히지 않게). 목록이 없는 단체는 늘 직접 입력.
+ */
+export function isCertLevelTyping(org: string | null | undefined, level: string | null | undefined, otherOpen: boolean): boolean {
+  return certLevelOptions(org).length === 0 || otherOpen || certLevelChoice(org, level).kind === "other";
+}
+
+/**
+ * 단체를 고른 뒤의 등급. 단체가 비어 있던 예전 줄은 적어 둔 등급을 지우지 않는다(목록 값이면 그 칸, 아니면 직접 입력 칸에).
+ * 이미 단체가 있던 줄에서 다른 단체로 바꾸면 등급은 새로 고른다.
+ */
+export function levelAfterOrgPick(prevOrg: string | null | undefined, level: string, nextOrg: string): { level: string; otherOpen: boolean } {
+  if (!(prevOrg ?? "").trim() && level.trim()) {
+    return { level, otherOpen: certLevelChoice(nextOrg, level).kind === "other" };
+  }
+  return { level: "", otherOpen: false };
 }
