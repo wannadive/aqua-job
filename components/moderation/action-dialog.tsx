@@ -26,6 +26,8 @@ import {
 } from "@/lib/moderation/logic";
 import type { AccountStatusValue, ReportTargetType, ViolationReason } from "@/lib/moderation/types";
 import { ViolationFields } from "./violation-fields";
+import { isDirty } from "@/lib/navigation/dirty";
+import { useLeaveGuard } from "@/lib/navigation/use-navigable";
 
 export type AdminAction = "hide_job" | "unhide_job" | "suspend" | "ban" | "reactivate";
 
@@ -73,11 +75,18 @@ export function ModerationActionDialog({
   const [reason, setReason] = useState<ViolationReason | null>(null);
   const [note, setNote] = useState("");
   // 신고에서 열었으면 기본은 신고를 닫는다(같은 대상 열린 신고가 더 있으면 모두)
-  const [scope, setScope] = useState<CloseScope>(report ? (report.openCount > 1 ? "all" : "this") : "none");
+  const initialScope: CloseScope = report ? (report.openCount > 1 ? "all" : "this") : "none";
+  const [scope, setScope] = useState<CloseScope>(initialScope);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const running = useRef(false);
   const mounted = useRef(true);
+  // 작성 중 = 사유·설명·신고 처리 방식을 바꿈. 폰 뒤로가기·취소·바깥 누름 전에 묻는다
+  const guard = useLeaveGuard(isDirty({ reason: null, note: "", scope: initialScope }, { reason, note, scope }));
+  const close = () => {
+    if (busy || !guard.confirmLeave()) return;
+    onClose();
+  };
 
   useEffect(() => {
     mounted.current = true;
@@ -143,12 +152,14 @@ export function ModerationActionDialog({
         return;
       }
       // 이미 숨김·이미 그 상태·권한 없음 등: 화면이 오래됐을 수 있다 → 영향받은 목록만 다시 불러오고 닫는다
+      guard.release();
       await finish();
       if (mounted.current) onClose();
       return;
     }
 
     toast.success(r.action === "unhide_job" ? unhideDoneText(res.status) : DONE_TEXT[r.action]);
+    guard.release(); // 조치했으니 닫을 때 묻지 않는다
 
     // 신고에서 연 조치면 고른 대로 신고를 닫는다(조용히 열어 두지 않는다)
     if (report && scope !== "none") {
@@ -187,7 +198,7 @@ export function ModerationActionDialog({
           : null;
 
   return (
-    <Dialog open onOpenChange={(v) => !v && !busy && onClose()}>
+    <Dialog open onOpenChange={(v) => !v && close()}>
       <DialogContent className="max-h-[90dvh] max-w-sm overflow-y-auto">
         {step === "form" ? (
           <>
@@ -261,7 +272,7 @@ export function ModerationActionDialog({
               )}
             </div>
             <DialogFooter className="gap-2">
-              <Button variant="outline" className="h-11 border-line" disabled={busy} onClick={onClose}>
+              <Button variant="outline" className="h-11 border-line" disabled={busy} onClick={close}>
                 취소
               </Button>
               <Button className="h-11 bg-ink text-white" disabled={busy} onClick={next}>

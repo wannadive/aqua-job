@@ -12,6 +12,7 @@ import { ReviewQueue } from "@/components/verification/admin/review-queue";
 import { AdminJobs } from "@/components/jobs/admin/admin-jobs";
 import { AdminReports } from "@/components/moderation/admin-reports";
 import { MemberActions } from "@/components/moderation/member-actions";
+import { leaveToRoot } from "@/lib/navigation/use-navigable";
 
 type Tab = "review" | "jobs" | "reports" | "members" | "settings";
 
@@ -144,7 +145,8 @@ export function AdminShell() {
             <li key={key} className="flex-1">
               <button
                 type="button"
-                onClick={() => setTab(key)}
+                // 작성 중이면 묻고, 덮는 화면(서류 상세 등)·팝업을 모두 닫은 뒤 탭을 바꾼다
+                onClick={() => leaveToRoot(() => setTab(key))}
                 aria-current={tab === key ? "page" : undefined}
                 className={`flex w-full flex-col items-center gap-1 py-2.5 text-[11px] font-semibold ${tab === key ? "text-ink" : "text-muted"}`}
               >

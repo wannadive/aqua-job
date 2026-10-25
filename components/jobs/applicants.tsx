@@ -13,6 +13,7 @@ import { sortOpenFirst } from "@/lib/jobs/logic";
 import type { JobApplication, JobSummary } from "@/lib/jobs/types";
 import { ApplicantContact } from "./applicant-contact";
 import { ApplicantResume } from "./applicant-resume";
+import { useNavigableValue } from "@/lib/navigation/use-navigable";
 
 const CHIP: Record<JobApplication["status"], { label: string; cls: string }> = {
   applied: { label: "지원함", cls: "bg-surface text-ink" },
@@ -64,7 +65,8 @@ export function Applicants({
   const [apps, setApps] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [resumeOf, setResumeOf] = useState<JobApplication | null>(null);
+  // 지원자 이력서(덮는 화면): 방문 기록 한 칸 — 폰 뒤로가기·[뒤로]가 같은 길로 닫는다
+  const [resumeOf, setResumeOf] = useNavigableValue<JobApplication>("v_appresume");
   const [selecting, setSelecting] = useState<JobApplication | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);

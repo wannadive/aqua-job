@@ -9,6 +9,8 @@ import { submitReport } from "@/lib/moderation/api";
 import { REPORT_DONE_TEXT, reportSheetTitle, violationInputError } from "@/lib/moderation/logic";
 import type { ReportTarget, ViolationReason } from "@/lib/moderation/types";
 import { ViolationFields } from "./violation-fields";
+import { isDirty } from "@/lib/navigation/dirty";
+import { useLeaveGuard } from "@/lib/navigation/use-navigable";
 
 /**
  * [신고하기] 버튼 + 신고 시트. 누가 보이게 할지는 부르는 쪽이 정한다(로그인한 활성 회원 · 내 것 아님).
@@ -38,6 +40,12 @@ export function ReportSheet({ target, onClose }: { target: ReportTarget | null; 
   const submitting = useRef(false);
   const mounted = useRef(true);
   const key = target ? `${target.type}:${target.id}` : null;
+  // 작성 중 = 사유를 골랐거나 설명을 적음. 폰 뒤로가기·취소·바깥 누름 전에 묻는다
+  const guard = useLeaveGuard(key !== null && isDirty({ reason: null, note: "" }, { reason, note }));
+  const close = () => {
+    if (busy || !guard.confirmLeave()) return;
+    onClose();
+  };
 
   useEffect(() => {
     mounted.current = true;
@@ -76,13 +84,14 @@ export function ReportSheet({ target, onClose }: { target: ReportTarget | null; 
       return;
     }
     toast.success(REPORT_DONE_TEXT);
+    guard.release(); // 보냈으니 닫을 때 묻지 않는다
     if (!mounted.current) return;
     // 닫힐 때까지 busy 유지(이중 제출 방지)
     onClose();
   };
 
   return (
-    <Sheet open={target !== null} onOpenChange={(v) => !v && !busy && onClose()}>
+    <Sheet open={target !== null} onOpenChange={(v) => !v && close()}>
       <SheetContent side="bottom" className="mx-auto max-h-[90dvh] max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="text-left text-lg font-bold text-ink">{target ? reportSheetTitle(target.type) : "신고하기"}</SheetTitle>
@@ -124,7 +133,7 @@ export function ReportSheet({ target, onClose }: { target: ReportTarget | null; 
             </p>
 
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" className="h-[52px] border-line text-base" disabled={busy} onClick={onClose}>
+              <Button variant="outline" className="h-[52px] border-line text-base" disabled={busy} onClick={close}>
                 취소
               </Button>
               <Button className="h-[52px] bg-ink text-base text-white" disabled={busy} onClick={() => void submit()}>

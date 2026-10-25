@@ -13,13 +13,15 @@ import {
   type NavIntent,
   type NotificationTarget,
 } from "@/lib/notifications/link";
+import { readSwOpenLink, SW_ACK, type SwOpenLink } from "@/lib/notifications/sw-message";
+import { cleanNavOnLoad, leaveToRoot } from "@/lib/navigation/use-navigable";
 import { LoginForm } from "@/components/app-shell/auth/login-form";
 import { SignupForm } from "@/components/app-shell/auth/signup-form";
 import { SignupSelect } from "@/components/app-shell/auth/signup-select";
 import { IntroSlides } from "@/components/app-shell/intro/intro-slides";
 import { AdminShell } from "@/components/app-shell/admin-shell";
 import { BlockedScreen } from "@/components/app-shell/blocked-screen";
-import { ROLE_TABS_HEIGHT, RoleTabs } from "@/components/app-shell/role-tabs";
+import { RoleTabs, TOP_BAR_HEIGHT } from "@/components/app-shell/role-tabs";
 import { CenterShell } from "@/components/app-shell/center-shell";
 import { InstructorShell } from "@/components/app-shell/instructor-shell";
 import { ResumeWizard } from "@/components/talent-profile/resume-wizard";
@@ -61,10 +63,8 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
   const navSeq = useRef(0);
   // 푸시를 눌러 '/?tab=…'로 열렸을 때의 대상. 로그인한 활성 계정이 생기면 한 번 적용한다(메모리에만 둔다).
   const launchTarget = useRef<{ target: NotificationTarget; link: string } | null>(null);
-  // 적용한 푸시 링크(그 알림을 읽음으로 바꾸는 데만 쓴다)
-  const [launchLink, setLaunchLink] = useState<string | null>(null);
-  // 화면 전체 입력 폼(공고 작성 등)이 열려 있으면 종을 숨긴다 — 알림으로 이동하면서 쓰던 내용이 사라지지 않게
-  const [fullScreenForm, setFullScreenForm] = useState(false);
+  // 적용한 푸시 링크(그 알림을 읽음으로 바꾸는 데만 쓴다). 같은 링크가 다시 와도 다시 처리하도록 매번 새 객체
+  const [launchLink, setLaunchLink] = useState<{ link: string } | null>(null);
   const userId = user?.id ?? null;
   const ready_ = !!user && user.accountStatus === "active";
 
@@ -96,18 +96,76 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     [user, shownRole, setActiveRole],
   );
 
-  const openLink = useCallback(
-    (link: string | null) => {
+  // 나중에(기록을 되돌린 뒤) 부르므로 늘 최신 것을 쓴다
+  const goTargetRef = useRef(goTarget);
+  goTargetRef.current = goTarget;
+
+  /**
+   * 알림(종 목록·열린 앱에서 누른 푸시)으로 이동: 작성 중이면 먼저 묻고(취소하면 그대로, false),
+   * 덮는 화면·팝업을 모두 닫은 뒤 대상 화면으로. 종과 푸시가 같은 길을 쓴다.
+   */
+  const openLink = useCallback((link: string | null): boolean => {
+    return leaveToRoot(() => {
       if (link == null) return;
       const t = parseNotificationLink(link);
       if (!t) {
         toast(NAV_FAIL_TEXT.invalid);
         return;
       }
-      goTarget(t);
+      goTargetRef.current(t);
+    });
+  }, []);
+
+  // 열린 앱 창에서 푸시를 누름(public/sw.js가 보낸 메시지) — 새로 고침 없이 종과 같은 길로 이동
+  const handleSwLink = useCallback(
+    (r: Exclude<SwOpenLink, { kind: "ignore" }>) => {
+      if (!user) {
+        // 로그인 전이면 로그인한 뒤 한 번 적용(첫 화면 주소의 푸시 링크와 같은 처리)
+        if (r.kind === "open") {
+          launchTarget.current = { target: r.target, link: r.link };
+          setIntroSeen(true);
+        }
+        return;
+      }
+      if (user.accountStatus !== "active") return;
+      if (r.kind === "invalid") {
+        toast(NAV_FAIL_TEXT.invalid);
+        return;
+      }
+      const link = r.link;
+      leaveToRoot(() => {
+        goTargetRef.current(r.target);
+        setLaunchLink({ link });
+      });
     },
-    [goTarget],
+    [user],
   );
+  const handleSwLinkRef = useRef(handleSwLink);
+  handleSwLinkRef.current = handleSwLink;
+
+  useEffect(() => {
+    const sw = typeof navigator !== "undefined" ? navigator.serviceWorker : undefined;
+    if (!sw) return;
+    const onMessage = (e: MessageEvent) => {
+      const r = readSwOpenLink(e.data, e.origin, window.location.origin);
+      if (r.kind === "ignore") return;
+      // 받았다고 먼저 답한다(답이 없으면 서비스 워커가 창 주소를 바꿔 새로 고침한다)
+      try {
+        e.ports?.[0]?.postMessage({ type: SW_ACK });
+      } catch {
+        /* ignore */
+      }
+      // 확인 창(작성 중)이 메시지 처리 안에서 뜨지 않게 다음 차례에
+      window.setTimeout(() => handleSwLinkRef.current(r), 0);
+    };
+    sw.addEventListener("message", onMessage);
+    try {
+      sw.startMessages();
+    } catch {
+      /* ignore */
+    }
+    return () => sw.removeEventListener("message", onMessage);
+  }, []);
 
   const consumeNav = useCallback(() => setNav(null), []);
 
@@ -119,7 +177,7 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     launchTarget.current = null;
     if (ready_) {
       goTarget(t.target);
-      setLaunchLink(t.link);
+      setLaunchLink({ link: t.link });
     }
   }, [isLoading, user, ready_, goTarget]);
 
@@ -151,6 +209,8 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     } catch {
       /* ignore */
     }
+    // 새로 고침 전의 덮는 화면 주소 키(v_…)를 지운다 — 화면 안 값은 메모리에만 있어서 다시 열 수 없다
+    cleanNavOnLoad();
     setReady(true);
   }, []);
 
@@ -178,24 +238,30 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
   // /admin 주소는 도입부 없이 곧바로 로그인 화면
   const route = routeFor(user, introSeen || adminEntry, shownRole);
 
-  // 활성 계정의 역할 화면: 위에 종(알림), 여러 역할 계정은 그 위에 [관리자] [강사] [센터] 탭.
+  // 활성 계정의 역할 화면: 위 막대(여러 역할 계정은 [관리자] [강사] [센터] 탭 + 종)는 스크롤해도 보이게 고정.
+  // 작성 중 화면에서도 종을 숨기지 않는다 — 알림으로 이동할 때 작성 중이면 먼저 묻는다(openLink).
   // 알림 상태는 사용자마다 따로(key) — 계정이 바뀌면 통째로 새로 만든다.
-  const withRoleTabs = (screen: ReactNode, showBell = true) =>
+  const withRoleTabs = (screen: ReactNode) =>
     user && shownRole ? (
       <NotificationsProvider key={user.id} onOpenLink={openLink} scope={shownRole} launchLink={launchLink}>
-        <div style={user.roles.length > 1 ? { ["--role-tabs-h" as string]: ROLE_TABS_HEIGHT } : undefined}>
-          {user.roles.length > 1 && (
-            <RoleTabs
-              roles={user.roles}
-              value={shownRole}
-              onChange={(r) => {
-                setAdminPinned(false);
-                setNav(null);
-                setActiveRole(r);
-              }}
-            />
-          )}
-          {showBell && <NotificationBar />}
+        <div style={{ ["--role-tabs-h" as string]: TOP_BAR_HEIGHT(user.roles.length > 1) }}>
+          <header className="sticky top-0 z-20 bg-bg pt-[env(safe-area-inset-top)]">
+            {user.roles.length > 1 && (
+              <RoleTabs
+                roles={user.roles}
+                value={shownRole}
+                onChange={(r) => {
+                  // 작성 중이면 묻고, 덮는 화면·팝업을 모두 닫은 뒤 역할 화면을 바꾼다
+                  leaveToRoot(() => {
+                    setAdminPinned(false);
+                    setNav(null);
+                    setActiveRole(r);
+                  });
+                }}
+              />
+            )}
+            <NotificationBar />
+          </header>
           {screen}
         </div>
         <NotificationPanel />
@@ -232,17 +298,13 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     case "blocked":
       return <BlockedScreen />;
     case "instructor-onboarding":
-      // 첫 이력서 작성도 화면 전체 입력 폼 → 종을 숨긴다
-      return withRoleTabs(<ResumeWizard onComplete={refreshAccount} />, false);
+      return withRoleTabs(<ResumeWizard onComplete={refreshAccount} />);
     case "instructor":
       return withRoleTabs(
         <InstructorShell nav={nav?.role === "instructor" ? nav : null} onNavConsumed={consumeNav} />,
       );
     case "center":
-      return withRoleTabs(
-        <CenterShell nav={nav?.role === "center" ? nav : null} onNavConsumed={consumeNav} onFullScreenFormChange={setFullScreenForm} />,
-        !fullScreenForm,
-      );
+      return withRoleTabs(<CenterShell nav={nav?.role === "center" ? nav : null} onNavConsumed={consumeNav} />);
     case "admin":
       return withRoleTabs(<AdminShell />);
   }

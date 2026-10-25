@@ -8,6 +8,10 @@ import { canLoadMore, nextListLimit, shouldRefresh, UNREAD_POLL_MS } from "@/lib
 import { disablePush, enablePush, readPushState, registerServiceWorker } from "@/lib/notifications/push-client";
 import type { PushState } from "@/lib/notifications/push-state";
 import type { AquaNotification } from "@/lib/notifications/types";
+import { closeNavigable, useNavigable } from "@/lib/navigation/use-navigable";
+
+/** 알림 목록(덮는 화면)을 여는 주소 키 — 폰 뒤로가기가 목록만 닫는다 */
+const PANEL_PARAM = "v_noti";
 
 type PushCtx = {
   /** null = 확인 중 */
@@ -52,6 +56,8 @@ export function useNotifications(): NotificationsCtx {
  * (앞 사람 알림이 잠깐이라도 보이지 않게).
  * - 안 읽은 개수: 처음·화면 보임·포커스·목록에서 이동한 뒤 + 화면이 보일 때만 60초마다. 숨겨진 탭에서는 부르지 않는다.
  * - 이동은 셸이 준 onOpenLink(link)가 한다(링크 해석·역할 확인은 셸 쪽 lib/notifications/link).
+ *   작성 중이라 사용자가 머물기로 하면 false를 돌려주고, 그때는 목록을 그대로 둔다.
+ * - 목록은 방문 기록 한 칸(주소 키 v_noti) — 폰 뒤로가기·[닫기]가 같은 길로 목록만 닫는다.
  */
 export function NotificationsProvider({
   children,
@@ -60,14 +66,16 @@ export function NotificationsProvider({
   launchLink = null,
 }: {
   children: ReactNode;
-  onOpenLink: (link: string | null) => void;
-  /** 푸시를 눌러 열린 앱 안 주소(검증된 것). 그 링크의 내 안 읽은 알림을 읽음으로 바꾼다 */
-  launchLink?: string | null;
+  /** false = 이동하지 않음(작성 중이라 머물기로 함) */
+  onOpenLink: (link: string | null) => boolean | void;
+  /** 푸시를 눌러 열린 앱 안 주소(검증된 것). 그 링크의 내 안 읽은 알림을 읽음으로 바꾼다(새 객체마다 한 번) */
+  launchLink?: { link: string } | null;
   /** 보고 있는 역할 화면. 바뀌면 열린 목록을 닫는다 */
   scope?: string | null;
 }) {
   const [unread, setUnread] = useState<number | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelFlag, setPanelFlag] = useNavigable(PANEL_PARAM);
+  const panelOpen = panelFlag !== null;
   const [items, setItems] = useState<AquaNotification[] | null>(null);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState(false);
@@ -86,14 +94,14 @@ export function NotificationsProvider({
   const markingAllRef = useRef(false);
   const openingRef = useRef(false);
   const pushBusyRef = useRef(false);
-  const panelOpenRef = useRef(false);
+  const panelOpenRef = useRef(panelOpen);
+  panelOpenRef.current = panelOpen;
   const onOpenLinkRef = useRef(onOpenLink);
   onOpenLinkRef.current = onOpenLink;
 
-  // 역할 화면이 바뀌면 목록을 닫는다
+  // 역할 화면이 바뀌면 목록을 닫는다(역할 탭은 덮는 화면을 모두 닫고 바꾸므로 보통 이미 닫혀 있다)
   useEffect(() => {
-    panelOpenRef.current = false;
-    setPanelOpen(false);
+    if (panelOpenRef.current) closeNavigable(PANEL_PARAM);
   }, [scope]);
 
   useEffect(() => {
@@ -152,14 +160,15 @@ export function NotificationsProvider({
 
   const openPanel = useCallback(() => {
     limitRef.current = NOTIFICATION_PAGE_SIZE; // 열 때마다 최근 50개부터
+    if (panelOpenRef.current) return;
     panelOpenRef.current = true;
-    setPanelOpen(true);
+    setPanelFlag("1");
     void reloadList();
-  }, [reloadList]);
+  }, [reloadList, setPanelFlag]);
 
   const closePanel = useCallback(() => {
-    panelOpenRef.current = false;
-    setPanelOpen(false);
+    if (!panelOpenRef.current) return;
+    closeNavigable(PANEL_PARAM);
   }, []);
 
   const markAll = useCallback(async () => {
@@ -196,8 +205,7 @@ export function NotificationsProvider({
             setItems((list) => list?.map((x) => (x.id === n.id ? { ...x, readAt: at } : x)) ?? list);
           }
         }
-        panelOpenRef.current = false;
-        setPanelOpen(false);
+        // 이동은 셸이 목록·덮는 화면을 모두 닫고 한다. 작성 중이라 머물기로 하면(false) 목록은 그대로
         onOpenLinkRef.current(n.link);
         void refreshUnread(true);
       } finally {
@@ -243,11 +251,11 @@ export function NotificationsProvider({
   }, [refreshUnread, loadList]);
 
   // 푸시로 열린 링크의 알림 읽음 표시(한 번만, 실패는 조용히) → 개수 다시
-  const launchDone = useRef<string | null>(null);
+  const launchDone = useRef<{ link: string } | null>(null);
   useEffect(() => {
     if (!launchLink || launchDone.current === launchLink) return;
     launchDone.current = launchLink;
-    void markReadByLink(launchLink).then(() => {
+    void markReadByLink(launchLink.link).then(() => {
       if (alive.current) void refreshUnread(true);
     });
   }, [launchLink, refreshUnread]);

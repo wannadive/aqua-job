@@ -5,8 +5,13 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { useBackToClose } from '@/lib/navigation/use-navigable'
 
-const Dialog = DialogPrimitive.Root
+// 열려 있으면 폰 뒤로가기 = 이 팝업만 닫기 (방문 기록 한 칸, lib/navigation/use-navigable useBackToClose)
+function Dialog({ open, onOpenChange, ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {
+  useBackToClose(open, onOpenChange)
+  return <DialogPrimitive.Root open={open} onOpenChange={onOpenChange} {...props} />
+}
 
 const DialogTrigger = DialogPrimitive.Trigger
 

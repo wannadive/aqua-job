@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Toaster } from "sonner";
+import { NavigationInit } from "@/components/shared/navigation-init";
 import { BRAND } from "@/lib/brand";
 import "./globals.css";
 
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
+        <NavigationInit />
         {children}
         <Toaster position="top-center" />
       </body>

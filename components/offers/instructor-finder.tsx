@@ -13,6 +13,7 @@ import { CERT_ORG_OPTIONS, DAY_OPTIONS, REGION_OPTIONS, SCOPE_OPTIONS } from "@/
 import { InstructorCard } from "./instructor-card";
 import { OfferComposer } from "./offer-composer";
 import { SentOffers } from "./sent-offers";
+import { useNavigableValue } from "@/lib/navigation/use-navigable";
 
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -157,7 +158,8 @@ export function InstructorFinder({
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const seq = useRef(0);
-  const [resumeOf, setResumeOf] = useState<{ id: string; name: string } | null>(null);
+  // 강사 이력서(덮는 화면): 방문 기록 한 칸 — 폰 뒤로가기·[뒤로]가 같은 길로 닫는다
+  const [resumeOf, setResumeOf] = useNavigableValue<{ id: string; name: string }>("v_talent");
   const [composing, setComposing] = useState<{ id: string; name: string } | null>(null);
 
   // 첫 쪽: 필터가 바뀌거나 다시 시도하면 처음부터

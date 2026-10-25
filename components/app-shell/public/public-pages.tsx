@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CenterPublicProfileView } from "@/components/centers/center-public-profile";
@@ -10,6 +10,10 @@ import { JobList } from "@/components/jobs/job-list";
 import { BRAND } from "@/lib/brand";
 import { SupabaseAuthProvider, useAuth } from "@/lib/app-shell/auth-provider";
 import type { JobSummary, JobViewer } from "@/lib/jobs/types";
+import { closeNavigable, goBackInApp, useNavigable } from "@/lib/navigation/use-navigable";
+
+/** 공고 탭 안 덮는 화면(공고 상세·센터 프로필)의 깊이 주소 키 — 한 칸씩 방문 기록에 */
+const JOBS_DEPTH_PARAM = "v_jobs";
 
 function useViewer(): { viewer: JobViewer; loading: boolean } {
   const { user, isLoading } = useAuth();
@@ -134,11 +138,33 @@ export function JobsBrowser({
   initialJobId?: string | null;
 }) {
   const { viewer } = useViewer();
-  const [stack, setStack] = useState<View[]>(initialJobId ? [{ kind: "list" }, { kind: "job", id: initialJobId }] : [{ kind: "list" }]);
-  const view = stack[stack.length - 1];
-  const push = (v: View) => setStack((s) => [...s, v]);
-  const pop = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
+  // 목록 위에 쌓인 화면들(값은 메모리에), 지금 깊이는 주소 키 — 폰 뒤로가기·[목록]/[뒤로]가 한 칸씩 같은 길로 닫는다
+  const [stack, setStack] = useState<View[]>(() =>
+    initialJobId ? [{ kind: "list" }, { kind: "job", id: initialJobId }] : [{ kind: "list" }],
+  );
+  const [rawDepth, setRawDepth] = useNavigable(JOBS_DEPTH_PARAM);
+  // 다른 탭에서 공고를 눌러 들어온 첫 그림: 기록에 올리기 전에도 그 공고를 보여 준다(목록이 잠깐 보이지 않게)
+  const [initPending, setInitPending] = useState(!!initialJobId);
+  const parsed = rawDepth === null ? (initPending ? 1 : 0) : Number.parseInt(rawDepth, 10);
+  // 새로 고침 뒤 남은 키 등 메모리에 없는 깊이는 있는 데까지만
+  const depth = Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, stack.length - 1) : 0;
+  const view = stack[depth];
+  const push = (v: View) => {
+    setStack((s) => [...s.slice(0, depth + 1), v]);
+    setRawDepth(String(depth + 1));
+  };
+  // 한 칸 뒤로(쌓은 칸이 아니면 키를 지워 목록으로)
+  const pop = () => goBackInApp(() => closeNavigable(JOBS_DEPTH_PARAM));
   const noop = () => {};
+
+  // 다른 탭에서 공고를 눌러 들어왔으면 목록 위에 그 공고를 한 칸 쌓아 연다(뒤로 = 공고 목록)
+  const opened = useRef(false);
+  useEffect(() => {
+    if (!initialJobId || opened.current) return;
+    opened.current = true;
+    setRawDepth("1");
+    setInitPending(false);
+  }, [initialJobId, setRawDepth]);
 
   if (view.kind === "job")
     return (

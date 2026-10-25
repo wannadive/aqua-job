@@ -18,7 +18,15 @@ import { fetchMyDocuments } from "@/lib/verification/api";
 import { todayKst } from "@/lib/verification/logic";
 import type { DocType } from "@/lib/verification/types";
 import { EMPTY, draftToInput, validateDraft, type Draft } from "@/lib/jobs/form";
+import { isDirty } from "@/lib/navigation/dirty";
+import { goBackInApp, useLeaveGuard, useNavigableView } from "@/lib/navigation/use-navigable";
 import { JobCard } from "./job-card";
+
+/** 공고 작성·수정 화면을 여는 주소 키(셸이 연다) — 작성 중 보호가 이 키가 사라지는 뒤로가기만 막는다 */
+export const JOB_FORM_PARAM = "v_jobform";
+/** 작성 단계(종류 → 입력 → 미리보기)도 방문 기록에 — 폰 뒤로가기 = 직전 단계 */
+const STEP_PARAM = "v_jobstep";
+type Step = "type" | "fields" | "preview";
 
 const TYPE_DESC: Record<JobType, string> = {
   lesson: "정해진 날 한 번 하는 수업을 맡길 강사를 찾아요",
@@ -91,7 +99,7 @@ export function JobForm({
   const submitting = useRef(false);
   const today = todayKst();
   const editing = Boolean(editJobId);
-  const [step, setStep] = useState<"type" | "fields" | "preview">(editing ? "fields" : "type");
+  const [step, setStep] = useNavigableView<Step>(STEP_PARAM, editing ? "fields" : "type");
   const [type, setType] = useState<JobType | null>(null);
   const [d, setD] = useState<Draft>(EMPTY);
   const [deadlineTouched, setDeadlineTouched] = useState(editing);
@@ -101,6 +109,16 @@ export function JobForm({
   const [attempt, setAttempt] = useState(0);
   const [original, setOriginal] = useState<JobSummary | null>(null);
   const [busy, setBusy] = useState(false);
+  // 작성 중 판정의 처음 값: 새 공고는 빈 칸, 수정은 불러온 공고
+  const [baseline, setBaseline] = useState<Draft>(EMPTY);
+  // 마감일은 일정을 따라 자동으로 바뀌므로 직접 고쳤을 때만 비교한다
+  const dirty = isDirty({ ...baseline, deadline: deadlineTouched ? baseline.deadline : "" }, { ...d, deadline: deadlineTouched ? d.deadline : "" });
+  const guard = useLeaveGuard(dirty, { param: JOB_FORM_PARAM });
+  /** 화면 닫기(뒤로·취소): 작성 중이면 묻는다 */
+  const close = () => {
+    if (!guard.confirmLeave()) return;
+    onClose();
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -121,7 +139,7 @@ export function JobForm({
           if (!detail) throw new Error("not found");
           setOriginal(detail);
           setType(detail.jobType);
-          setD({
+          const loaded: Draft = {
             title: detail.title,
             region: detail.region,
             venue: detail.venue ?? "",
@@ -143,7 +161,9 @@ export function JobForm({
             requirementTags: detail.requirementTags,
             description: detail.description,
             deadline: detail.deadline,
-          });
+          };
+          setD(loaded);
+          setBaseline(loaded);
         }
       } catch {
         if (!cancelled) setLoadError(true);
@@ -207,10 +227,11 @@ export function JobForm({
     };
   }, [type, d, centerName, original]);
 
+  // 화면 안 [뒤로]: 앞 단계로(쌓인 기록을 되돌림 — 폰 뒤로가기와 같은 길), 첫 단계면 화면 닫기
   const back = () => {
-    if (step === "preview") setStep("fields");
-    else if (step === "fields" && !editing) setStep("type");
-    else onClose();
+    if (step === "preview") goBackInApp(() => setStep("fields"));
+    else if (step === "fields" && !editing) goBackInApp(() => setStep("type"));
+    else close();
   };
 
   const toPreview = () => {
@@ -237,6 +258,7 @@ export function JobForm({
       return;
     }
     toast.success(editJobId ? "공고를 수정했어요" : "공고를 올렸어요");
+    guard.release(); // 저장했으니 닫을 때 묻지 않는다
     try {
       await onSaved();
     } finally {
@@ -303,7 +325,12 @@ export function JobForm({
                     <p className="text-sm font-medium text-ink">
                       {withJosa(miss.map((m) => DOC_TYPES[m].label).join("·"))} 확인되면 올릴 수 있어요
                     </p>
-                    <Button className="mt-3 h-11 w-full bg-ink text-base text-white" onClick={onSubmitDocs}>
+                    <Button
+                      className="mt-3 h-11 w-full bg-ink text-base text-white"
+                      onClick={() => {
+                        if (guard.confirmLeave()) onSubmitDocs();
+                      }}
+                    >
                       서류 제출하기
                     </Button>
                   </div>
@@ -332,7 +359,7 @@ export function JobForm({
         <div className="h-24" />
         <StickyBar>
           <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" className="h-[52px] border-line text-base" disabled={busy} onClick={() => setStep("fields")}>
+            <Button variant="outline" className="h-[52px] border-line text-base" disabled={busy} onClick={back}>
               고치기
             </Button>
             <Button className="h-[52px] bg-ink text-base text-white" disabled={busy} onClick={() => void submit()}>

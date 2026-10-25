@@ -11,6 +11,8 @@ import type { JobApplication, JobSummary } from "@/lib/jobs/types";
 import { sendOffer } from "@/lib/offers/api";
 import { OFFER_JOB_BLOCK_LABEL, OFFER_MESSAGE_MAX, offerJobBlock, offerLimit, offersSentFor } from "@/lib/offers/logic";
 import type { Offer } from "@/lib/offers/types";
+import { isDirty } from "@/lib/navigation/dirty";
+import { useLeaveGuard } from "@/lib/navigation/use-navigable";
 
 /**
  * [공고 골라서 제안하기] 시트. 내 모집 중 공고 중 하나 + 한마디(200자, 선택) → send_offer.
@@ -52,6 +54,12 @@ export function OfferComposer({
   const instructorId = instructor?.id ?? null;
   const openJobs = jobs.filter((j) => j.status === "open");
   const openKey = openJobs.map((j) => j.id).join(",");
+  // 작성 중 = 공고를 골랐거나 한마디를 적음. 폰 뒤로가기·취소·바깥 누름 전에 묻는다
+  const guard = useLeaveGuard(instructorId !== null && isDirty({ jobId: null, message: "" }, { jobId, message }));
+  const close = () => {
+    if (busyRef.current || !guard.confirmLeave()) return;
+    onClose();
+  };
 
   // 열 때마다 새로 시작. 이미 지원한 강사 안내용으로 모집 중 공고의 지원을 읽는다(실패해도 서버가 다시 막는다).
   useEffect(() => {
@@ -93,6 +101,7 @@ export function OfferComposer({
         return;
       }
       toast.success("제안을 보냈어요. 강사가 답하면 보낸 제안에서 확인할 수 있어요");
+      guard.release(); // 보냈으니 닫을 때 묻지 않는다
       try {
         await onSent();
       } finally {
@@ -105,7 +114,7 @@ export function OfferComposer({
   };
 
   return (
-    <Sheet open={instructor !== null} onOpenChange={(v) => !v && !busyRef.current && onClose()}>
+    <Sheet open={instructor !== null} onOpenChange={(v) => !v && close()}>
       <SheetContent side="bottom" className="mx-auto max-h-[90dvh] max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="text-left text-lg font-bold text-ink">{instructor?.name ?? "강사"}님에게 제안하기</SheetTitle>
@@ -189,7 +198,7 @@ export function OfferComposer({
             )}
 
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" className="h-[52px] border-line text-base" disabled={busy} onClick={onClose}>
+              <Button variant="outline" className="h-[52px] border-line text-base" disabled={busy} onClick={close}>
                 취소
               </Button>
               <Button

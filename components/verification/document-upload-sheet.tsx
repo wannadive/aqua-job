@@ -10,6 +10,8 @@ import { compressImage } from "@/lib/image";
 import { submitDocument } from "@/lib/verification/api";
 import { DOC_TYPES } from "@/lib/verification/config";
 import type { DocType } from "@/lib/verification/types";
+import { isDirty } from "@/lib/navigation/dirty";
+import { useLeaveGuard } from "@/lib/navigation/use-navigable";
 
 const CERT_TYPES: DocType[] = ["instructor_cert", "rep_instructor_cert"];
 
@@ -34,6 +36,9 @@ export function DocumentUploadSheet({
   const [grade, setGrade] = useState("");
   const [number, setNumber] = useState("");
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  // 작성 중 = 사진을 골랐거나 칸을 적음. 폰 뒤로가기·바깥 누름·닫기 전에 묻는다
+  const guard = useLeaveGuard(open && (file !== null || isDirty({ org: "", grade: "", number: "" }, { org, grade, number })));
 
   useEffect(() => {
     if (!open) {
@@ -67,7 +72,8 @@ export function DocumentUploadSheet({
   const canSubmit = !!file && !busy && (!isCert || (org.trim() !== "" && grade.trim() !== ""));
 
   const submit = async () => {
-    if (!docType || !file || busy) return;
+    if (!docType || !file || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     try {
       const res = await submitDocument({
@@ -80,15 +86,24 @@ export function DocumentUploadSheet({
         return;
       }
       toast.success("서류를 제출했어요. 확인이 끝나면 여기에 표시돼요");
+      guard.release(); // 제출했으니 닫을 때 묻지 않는다
       onOpenChange(false);
       onSubmitted();
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   };
 
   return (
-    <Sheet open={open} onOpenChange={(v) => !busy && onOpenChange(v)}>
+    <Sheet
+      open={open}
+      onOpenChange={(v) => {
+        if (busyRef.current) return;
+        if (!v && !guard.confirmLeave()) return;
+        onOpenChange(v);
+      }}
+    >
       <SheetContent side="bottom" className="mx-auto max-h-[92dvh] max-w-md overflow-y-auto">
         <SheetTitle className="text-xl font-bold text-ink">{cfg?.label} 제출</SheetTitle>
         <SheetDescription className="sr-only">서류 사진을 올려 제출해요</SheetDescription>

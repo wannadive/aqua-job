@@ -9,6 +9,8 @@ import { fetchMyCenterProfile, saveCenterProfile } from "@/lib/center-listing/ap
 import type { CenterProfile } from "@/lib/center-listing/types";
 import { DAY_OPTIONS, TIME_OPTIONS } from "@/lib/talent-profile/config";
 import { avatarUrl, uploadAvatar } from "@/lib/avatar/api";
+import { isDirty } from "@/lib/navigation/dirty";
+import { useLeaveGuard } from "@/lib/navigation/use-navigable";
 
 type Draft = Partial<CenterProfile>;
 
@@ -175,16 +177,23 @@ function NumberInput({ value, onChange, unit, max }: { value: number | null | un
 
 export function CenterProfileForm() {
   const [draft, setDraftState] = useState<Draft | null>(null);
+  // 작성 중 판정의 처음 값: 불러온 값, 저장하면 저장한 값
+  const [baseline, setBaseline] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [loadError, setLoadError] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // 작성 중이면 탭 이동·역할 전환·알림 이동·폰 뒤로가기(앱 밖으로)·새로 고침 전에 묻는다
+  useLeaveGuard(draft !== null && baseline !== null && isDirty(baseline, draft), { anchor: "mount" });
 
   useEffect(() => {
     let cancelled = false;
     setLoadError(false);
     fetchMyCenterProfile()
       .then((p) => {
-        if (!cancelled) setDraftState(p ?? {});
+        if (cancelled) return;
+        setDraftState(p ?? {});
+        setBaseline(p ?? {});
       })
       .catch(() => {
         if (!cancelled) {
@@ -212,18 +221,22 @@ export function CenterProfileForm() {
   const set = (p: Draft) => setDraftState((d) => ({ ...d, ...p }));
 
   const save = async () => {
-    if (saving || !draft) return;
+    if (savingRef.current || !draft) return;
+    savingRef.current = true;
     setSaving(true);
+    const sent = draft; // 저장하는 동안 더 고친 것은 다시 작성 중으로 남는다
     try {
-      const { userId: _u, ...patch } = draft;
+      const { userId: _u, ...patch } = sent;
       void _u;
       const res = await saveCenterProfile(patch);
       if (res.error) {
         toast.error(res.error);
         return;
       }
+      setBaseline(sent);
       toast.success("센터 정보를 저장했어요");
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };

@@ -40,16 +40,56 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
+// 앱 창과 주고받는 메시지 이름 — lib/notifications/sw-message.ts와 같은 값(테스트가 확인)
+const OPEN_LINK = "aqua:open-link";
+const ACK = "aqua:ack";
+// 앱이 답하길 기다리는 시간. 답이 없으면(앱이 아직 안 떴거나 예전 화면) 예전처럼 창 주소를 바꾼다
+const ACK_WAIT_MS = 1500;
+
+// 앱 화면(로그인한 역할 화면)이 떠 있는 경로 — 여기서만 메시지로 앱 안에서 이동한다
+function isAppPath(pathname) {
+  return pathname === "/" || pathname === "/admin";
+}
+
+// 열린 앱 창에 링크를 보내고 답(ACK)을 기다린다. 답이 오면 true
+function postOpenLink(client, link) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      resolve(ok);
+    };
+    try {
+      const ch = new MessageChannel();
+      ch.port1.onmessage = (e) => finish(!!(e.data && e.data.type === ACK));
+      client.postMessage({ type: OPEN_LINK, link }, [ch.port2]);
+      setTimeout(() => finish(false), ACK_WAIT_MS);
+    } catch {
+      finish(false);
+    }
+  });
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const href = safeTarget(event.notification.data && event.notification.data.link).href;
+  const target = safeTarget(event.notification.data && event.notification.data.link);
+  const href = target.href;
+  const link = target.pathname + target.search; // 같은 출처 앱 안 주소만(safeTarget)
   event.waitUntil(
     (async () => {
       const all = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       for (const client of all) {
-        if (new URL(client.url).origin === self.location.origin) {
+        const url = new URL(client.url);
+        if (url.origin === self.location.origin) {
           try {
             await client.focus();
+          } catch {
+            // 포커스가 막혀도 이동은 시도
+          }
+          // 앱이 떠 있으면 새로 고침 없이 앱 안에서 이동(작성 중이면 앱이 먼저 묻는다)
+          if (isAppPath(url.pathname) && (await postOpenLink(client, link))) return;
+          try {
             if ("navigate" in client) {
               await client.navigate(href);
               return;
