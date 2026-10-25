@@ -32,6 +32,9 @@ function fakeBrowser(startUrl = "https://app.test/") {
   let silentGo = 0;
   /** 다음 go를 이만큼 늦게(ms) 적용 */
   let delayGo = 0;
+  /** true면 go를 차례로(FIFO) 처리 */
+  let fifo = false;
+  let fifoTail: Promise<void> = Promise.resolve();
   /** 앱 쪽 다른 듣는 쪽(화면 훅 등)이 받은 popstate 수 */
   let delivered = 0;
 
@@ -70,13 +73,17 @@ function fakeBrowser(startUrl = "https://app.test/") {
       const delay = delayGo || 1;
       delayGo = 0;
       pending++;
-      setTimeout(() => {
+      const apply = () => {
         pending--;
         const t = Math.max(0, Math.min(entries.length - 1, index + delta));
         if (t === index) return;
         index = t;
         if (!silent) fire(true);
-      }, delay);
+      };
+      if (fifo) {
+        // 실제 브라우저처럼 이동을 차례로: 앞 이동이 끝나야 다음 이동이 시작(각자 delay만큼 걸림)
+        fifoTail = fifoTail.then(() => new Promise<void>((r) => setTimeout(() => (apply(), r()), delay)));
+      } else setTimeout(apply, delay);
     },
   };
 
@@ -118,6 +125,9 @@ function fakeBrowser(startUrl = "https://app.test/") {
     },
     ignoreNextGo(n = 1) {
       ignoreGo = n;
+    },
+    useFifo() {
+      fifo = true;
     },
     delayNextGo(ms: number) {
       delayGo = ms;
@@ -751,4 +761,78 @@ test("바로잡기 되돌림 중 기대와 다른 popstate가 오면 바로잡�
   assert.equal(b.index, 0);
   assert.equal(nav.currentIdx, 0);
   assert.equal(b.delivered, before + 1, "삼켜지지 않고 화면에 전해짐");
+});
+
+// ---- 고침 5차: 나가기 + 늦은 go(FIFO) · 앱이 칸을 쌓은 뒤 진짜 뒤로가기
+
+/** 늦은 첫 되돌리기 + 재시도 상황 만들기: 입력 화면(1) · 하위 화면(2), 사용자는 1에서 뒤로 */
+async function lateRestoreSetup(answer: boolean) {
+  const ctx = setup();
+  const { b, nav, userBack } = ctx;
+  nav.pushLayer(new Map([["v_form", "1"]])); // 1
+  nav.pushLayer(new Map([["v_sub", "1"]])); // 2
+  const src = source({ param: "v_form" });
+  nav.addSource(src);
+  userBack(); // 2 → 1
+  await b.settle();
+  b.setAnswer(answer);
+  return { ...ctx, src };
+}
+
+test("나가기 + 늦은 첫 되돌리기가 나가기 go보다 먼저 도착(FIFO): 하위 화면이 다시 열리지 않고 입력 화면에서 나간다", async () => {
+  const { b, nav, userBack } = await lateRestoreSetup(true);
+  b.useFifo(); // 이동을 차례로: 늦은 첫 go → 재시도 go → 나가기 go → 바로잡기 go
+  b.onConfirm(() => b.delayNextGo(50)); // 나가기 go는 늦은 go들 뒤에 줄 선다
+  userBack(); // 1 → 0 → 되돌리기 go(+1)
+  b.delayNextGo(POP_WAIT_MS + 400); // 첫 되돌리기: 재시도가 나간 뒤에야 도착
+  await wait(20);
+  const seen: string[] = [];
+  b.addListener(() => seen.push(b.href));
+  await wait(POP_WAIT_MS + 1400);
+  await b.settle();
+  assert.equal(b.confirms.length, 1);
+  assert.equal(b.index, 0, "나갔다");
+  assert.equal(nav.currentIdx, 0);
+  assert.ok(!seen.some((u) => u.includes("v_sub")), "하위 화면이 화면에 다시 전해지지 않음");
+});
+
+test("나가기 + 나가기 go가 늦은 첫 되돌리기보다 먼저 도착(순서 바뀜): 그래도 나가고 넘친 이동은 바로잡는다", async () => {
+  const { b, nav, userBack } = await lateRestoreSetup(true);
+  userBack();
+  b.delayNextGo(POP_WAIT_MS + 600); // 첫 되돌리기: 나가기 go보다 늦게
+  await wait(20);
+  const seen: string[] = [];
+  b.addListener(() => seen.push(b.href));
+  await wait(POP_WAIT_MS + 1200);
+  await b.settle();
+  assert.equal(b.confirms.length, 1);
+  assert.equal(b.index, 0);
+  assert.equal(nav.currentIdx, 0);
+  assert.equal(seen.filter((u) => u.includes("v_form")).length, 0, "나간 뒤 입력 화면이 다시 전해지지 않음");
+});
+
+test("앞으로 가기 되돌리기(step=-1) 대기 중 앱이 칸을 쌓은 뒤의 진짜 뒤로가기는 삼키지 않는다", async () => {
+  const { b, nav } = setup();
+  nav.pushLayer(new Map([["v_form", "1"]])); // 1
+  nav.pushLayer(new Map([["v_form", null], ["v_other", "1"]])); // 2 (입력 화면 없음)
+  b.env.history.go(-1); // 2 → 1
+  await b.settle();
+  const src = source({ param: "v_form" });
+  nav.addSource(src);
+  b.setAnswer(false);
+  b.env.history.go(1); // 사용자 앞으로 가기: 1 → 2 → 입력 화면 닫힘 → 되돌리기 go(-1)
+  b.ignoreNextGo(1); // 첫 되돌리기 버려짐 → 재시도로 제자리(1) · 바로잡기 대기(step -1)
+  await wait(POP_WAIT_MS + 200);
+  await b.settle();
+  assert.equal(b.index, 1);
+  assert.equal(b.confirms.length, 1);
+  // 대기 시간 안에 앱이 새 화면을 쌓음(2) → 사용자가 뒤로(2 → 1, 이동량 -1 = step)
+  src.dirty = false;
+  nav.pushLayer(new Map([["v_new", "1"]]));
+  await b.settle();
+  const before = b.delivered;
+  b.env.history.go(-1);
+  await b.settle();
+  assert.equal(b.index, 1, "뒤로 갔다");
+  assert.equal(b.delivered, before + 1, "삼키지 않고 화면에 전해짐");
 });

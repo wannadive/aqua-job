@@ -180,11 +180,14 @@ export function createNavigation(env: NavEnv) {
   let correction: {
     /** 남은 go 하나의 이동량 */
     step: number;
-    /** 있어야 할 칸 — 남은 go는 여기서 시작해 home+step으로 간다 */
+    /** 되돌린 칸 — 남은 go는 여기서(또는 나가기를 고른 뒤면 나간 칸에서) 출발해 step만큼 간다 */
     home: number;
+    /** 나가기를 골랐으면 그 이동량(null = 머묾). 브라우저는 이동을 차례로(FIFO) 처리하지만 순서가 바뀌어도 되게 두 출발 칸을 다 받는다 */
+    leaveDelta: number | null;
     /** 대기 시한(확인 창이 닫힌 뒤부터 다시 잰다 — 사용자가 답하는 동안 끝나지 않게) */
     until: number;
-    returning: boolean;
+    /** 넘친 이동을 되돌리는 중이면 돌아갈 칸(null = 아님) */
+    returnTo: number | null;
   } | null = null;
   /** resetToRoot 대기: 바닥 칸에 닿으면 then() */
   let pendingReset: { base: number; then: () => void; timer: unknown } | null = null;
@@ -249,9 +252,11 @@ export function createNavigation(env: NavEnv) {
     env.setTimeout(() => {
       const leave = env.confirm(LEAVE_TEXT);
       // 확인 창이 떠 있는 동안 도착이 막혀 있던 남은 go가 이제 온다 → 바로잡기 시한을 지금부터 다시 잰다
-      if (correction && !correction.returning) {
+      if (correction && correction.returnTo === null) {
         correction.until = env.now() + POP_WAIT_MS;
-        if (leave) correction.home = r.expectIdx + r.delta; // 나가기: 있어야 할 칸이 바뀜
+        // 나가기: home은 그대로 두고 나간 칸도 출발 칸으로 받는다. 늦은 go가 나가기 go보다 먼저 오면(FIFO)
+        // home에서 출발 → 바로잡기 → 나가기 go가 '되돌림'으로 삼켜지고 → 바로잡기 go가 사용자를 나가게 한다
+        if (leave) correction.leaveDelta = r.delta;
       }
       if (!leave) return;
       for (const s of r.affected) s.released = true;
@@ -269,7 +274,7 @@ export function createNavigation(env: NavEnv) {
     env.clearTimeout(r.timer);
     // 두 번 보낸 go 중 하나가 도착했다 → 남은 하나가 늦게 올 수 있다
     if (r.retryStep !== null) {
-      correction = { step: r.retryStep, home: r.expectIdx, until: env.now() + POP_WAIT_MS, returning: false };
+      correction = { step: r.retryStep, home: r.expectIdx, leaveDelta: null, until: env.now() + POP_WAIT_MS, returnTo: null };
     }
     afterRestored(r);
   }
@@ -320,24 +325,26 @@ export function createNavigation(env: NavEnv) {
       return;
     }
 
-    if (correction && !correction.returning && env.now() > correction.until) correction = null;
+    if (correction && correction.returnTo === null && env.now() > correction.until) correction = null;
     if (correction) {
-      if (correction.returning) {
-        const home = correction.home;
+      const c = correction;
+      const fromHome = prevIdx === c.home || (c.leaveDelta !== null && prevIdx === c.home + c.leaveDelta);
+      if (c.returnTo !== null) {
+        const back = c.returnTo;
         correction = null;
-        if (newIdx === home) {
+        if (newIdx === back) {
           // 넘친 이동을 되돌린 popstate — 화면에 전하지 않음
           e.stopImmediatePropagation();
           curIdx = newIdx;
           return;
         }
         // 기대한 칸이 아니다 → 바로잡기를 끝내고 이 popstate는 평소대로
-      } else if (e.isTrusted && prevIdx === correction.home && newIdx === correction.home + correction.step) {
+      } else if (e.isTrusted && fromHome && newIdx === prevIdx + c.step) {
         // 늦게 도착한 나머지 되돌리기 go가 한 번 더 움직였다 → 바로잡기(새 이동으로 보지 않음)
         e.stopImmediatePropagation();
         curIdx = newIdx;
-        correction.returning = true;
-        nativeGo(-correction.step);
+        c.returnTo = prevIdx;
+        nativeGo(-c.step);
         return;
       }
     }
