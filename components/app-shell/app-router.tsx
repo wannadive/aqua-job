@@ -78,8 +78,18 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
     setNav(null);
     setLaunchLink(null);
     if (prevUserId.current !== userId) {
+      const loggedOut = prevUserId.current !== null && userId === null;
       prevUserId.current = userId;
       resetNavToRoot();
+      if (loggedOut) {
+        // 로그아웃하면 로그인 전 화면은 로그인부터(가입 화면 등 예전 값이 남지 않게)
+        setAuthView("login");
+        try {
+          window.sessionStorage.removeItem(AUTH_VIEW_KEY);
+        } catch {
+          /* ignore */
+        }
+      }
     }
   }, [userId]);
 
@@ -128,6 +138,11 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
   // 열린 앱 창에서 푸시를 누름(public/sw.js가 보낸 메시지) — 새로 고침 없이 종과 같은 길로 이동
   const handleSwLink = useCallback(
     (r: Exclude<SwOpenLink, { kind: "ignore" }>) => {
+      // 세션 복원 중이면 대상만 기억 — 복원이 끝났을 때 로그인돼 있으면 적용, 아니면 버린다(아래 첫 화면 주소 처리와 같은 길)
+      if (isLoading) {
+        if (r.kind === "open") launchTarget.current = { target: r.target, link: r.link };
+        return;
+      }
       // 로그인돼 있지 않으면 버린다(나중에 로그인하는 계정이 그 푸시의 주인이라는 보장이 없음)
       if (!user) return;
       if (user.accountStatus !== "active") return;
@@ -141,7 +156,7 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
         setLaunchLink({ userId: user.id, link });
       });
     },
-    [user],
+    [user, isLoading],
   );
   const handleSwLinkRef = useRef(handleSwLink);
   handleSwLinkRef.current = handleSwLink;
