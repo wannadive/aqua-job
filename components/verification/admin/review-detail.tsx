@@ -56,9 +56,10 @@ export function ReviewDetail({ item, onBack }: { item: ReviewItem; onBack: () =>
   // 연타로 두 번 처리되지 않게(상태 갱신 전 두 번째 누름)
   const running = useRef(false);
   // 작성 중 = 유효기간·반려 사유를 적음(반려 칸을 열기만 한 건 아님). 폰 뒤로가기·[목록] 전에 묻는다
-  const guard = useLeaveGuard(isDirty({ validUntil: "", reason: "" }, { validUntil, reason }), { param: REVIEW_DETAIL_PARAM });
+  // 처리하는 중에는 묻지 않고, 화면을 닫는 폰 뒤로가기는 조용히 되돌린다(busy)
+  const guard = useLeaveGuard(isDirty({ validUntil: "", reason: "" }, { validUntil, reason }), { param: REVIEW_DETAIL_PARAM, busy });
   const back = () => {
-    if (!guard.confirmLeave()) return;
+    if (guard.isSending() || !guard.confirmLeave()) return;
     onBack();
   };
   /** 처리가 끝나 목록으로 — 묻지 않는다 */

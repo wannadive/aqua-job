@@ -44,7 +44,7 @@ export function ResumeEditor() {
   // 작성 중이면 탭 이동·역할 전환·알림 이동·폰 뒤로가기(앱 밖으로)·새로 고침 전에 묻는다
   useLeaveGuard(
     draft !== null && savedDraft !== null && (isDirty(savedDraft, draft) || isDirty(savedContacts, contacts)),
-    { anchor: "mount" },
+    { anchor: "mount", busy: saving },
   );
 
   useEffect(() => {

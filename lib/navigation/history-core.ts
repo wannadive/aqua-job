@@ -61,6 +61,8 @@ export interface NavEnv {
 /** 작성 중 화면 하나. param이 있으면 그 주소 키가 사라질 때, 없으면 idx 칸 아래로 내려갈 때 닫힘으로 본다 */
 export interface LeaveSource {
   isDirty(): boolean;
+  /** 보내는 중(저장·제출 요청이 진행 중): 묻지 않고, 이 화면을 닫는 폰 뒤로가기는 조용히 되돌린다(반쯤 닫힌 화면 방지) */
+  isBusy?(): boolean;
   param: string | null;
   idx: number | null;
   released: boolean;
@@ -134,7 +136,15 @@ export function createNavigation(env: NavEnv) {
   const consumedDialogs = new Set<string>();
   const sources = new Set<LeaveSource>();
   /** 폰 뒤로가기를 되돌리는 중: 그 popstate들은 화면에 전하지 않는다 */
-  let restoring: { expectIdx: number; delta: number; affected: LeaveSource[]; timer: unknown } | null = null;
+  let restoring: {
+    expectIdx: number;
+    delta: number;
+    affected: LeaveSource[];
+    /** 보내는 중이라 되돌리기만(묻지 않음) */
+    silent: boolean;
+    retried: boolean;
+    timer: unknown;
+  } | null = null;
   /** resetToRoot 대기: 바닥 칸에 닿으면 then() */
   let pendingReset: { base: number; then: () => void; timer: unknown } | null = null;
   let dialogSeq = 0;
@@ -177,12 +187,51 @@ export function createNavigation(env: NavEnv) {
     }, BACK_PENDING_MS); // popstate가 안 오는 경우 대비
   };
 
-  const active = (src: LeaveSource) => !src.released && src.isDirty();
-  const affectedBy = (src: LeaveSource, newIdx: number, href: string) => {
-    if (!active(src)) return false;
+  // 놓아 준 화면(저장 성공 뒤 닫는 중 등)은 보내는 중이어도 막지 않는다 — 앱이 닫는 이동이 되돌려지지 않게
+  const busy = (src: LeaveSource) => !src.released && !!src.isBusy?.();
+  /** 작성 중 = 놓아 주지 않았고, 바뀐 게 있고, 보내는 중이 아님 */
+  const active = (src: LeaveSource) => !src.released && !busy(src) && src.isDirty();
+  /** 이 이동(newIdx, href)이 그 화면을 닫는가 */
+  const closes = (src: LeaveSource, newIdx: number, href: string) => {
     if (src.param) return !new URL(href).searchParams.has(src.param);
     return src.idx != null && newIdx < src.idx;
   };
+  const affectedBy = (src: LeaveSource, newIdx: number, href: string) => active(src) && closes(src, newIdx, href);
+
+  /** 기록이 제자리로 돌아온 뒤 묻는다(WebKit: popstate 처리 중 대화상자를 바로 띄우지 않음). 보내는 중이면 되돌리기만 */
+  function afterRestored(r: { delta: number; affected: LeaveSource[]; silent: boolean }) {
+    if (r.silent) return;
+    env.setTimeout(() => {
+      if (!env.confirm(LEAVE_TEXT)) return;
+      for (const s of r.affected) s.released = true;
+      nativeGo(r.delta);
+    }, 0);
+  }
+
+  /**
+   * 되돌리기 popstate가 제때 오지 않음: 한 번 더 시도하고, 그래도 안 되면 지금 기록(주소)에 화면을 맞춘다 —
+   * 쓰던 내용은 놓아 주고(이미 주소에서 사라졌다) 동기화 popstate. 화면과 기록이 어긋난 채 남지 않게.
+   */
+  function restoreTimedOut() {
+    const r = restoring;
+    if (!r) return;
+    // popstate 없이 기록만 움직였을 수도 있다 → 실제 지금 칸으로 판단
+    curIdx = idxOf(h.state);
+    if (curIdx === r.expectIdx) {
+      restoring = null;
+      afterRestored(r);
+      return;
+    }
+    if (!r.retried) {
+      r.retried = true;
+      r.timer = env.setTimeout(restoreTimedOut, POP_WAIT_MS);
+      nativeGo(r.expectIdx - curIdx);
+      return;
+    }
+    restoring = null;
+    for (const src of r.affected) src.released = true;
+    syncPop(); // 화면 훅·팝업이 지금 주소·칸을 다시 읽는다
+  }
 
   function finishReset() {
     const r = pendingReset;
@@ -207,26 +256,28 @@ export function createNavigation(env: NavEnv) {
         const r = restoring;
         restoring = null;
         env.clearTimeout(r.timer);
-        // 기록이 제자리로 돌아온 뒤 묻는다(WebKit: popstate 처리 중 대화상자를 바로 띄우지 않음)
-        env.setTimeout(() => {
-          if (!env.confirm(LEAVE_TEXT)) return;
-          for (const s of r.affected) s.released = true;
-          nativeGo(r.delta);
-        }, 0);
+        afterRestored(r);
       }
       return;
     }
 
     if (e.isTrusted && newIdx !== prevIdx) {
-      const affected = [...sources].filter((s) => affectedBy(s, newIdx, env.location.href));
-      if (affected.length > 0) {
-        // 이 이동이 쓰던 내용을 지운다 → 화면에 전하지 않고 기록을 원래 칸으로 되돌린 뒤 확인
+      const href = env.location.href;
+      const sending = [...sources].filter((s) => busy(s) && closes(s, newIdx, href));
+      const affected = sending.length > 0 ? [] : [...sources].filter((s) => affectedBy(s, newIdx, href));
+      if (sending.length > 0 || affected.length > 0) {
+        // 이 이동이 보내는 중인 화면을 닫거나(→ 조용히 되돌림) 쓰던 내용을 지운다(→ 되돌린 뒤 확인).
+        // 화면에는 전하지 않는다.
         e.stopImmediatePropagation();
         curIdx = newIdx;
-        const timer = env.setTimeout(() => {
-          restoring = null;
-        }, POP_WAIT_MS);
-        restoring = { expectIdx: prevIdx, delta: newIdx - prevIdx, affected, timer };
+        restoring = {
+          expectIdx: prevIdx,
+          delta: newIdx - prevIdx,
+          affected,
+          silent: sending.length > 0,
+          retried: false,
+          timer: env.setTimeout(restoreTimedOut, POP_WAIT_MS),
+        };
         nativeGo(prevIdx - newIdx);
         return;
       }
@@ -289,6 +340,12 @@ export function createNavigation(env: NavEnv) {
   function closeLayer(...params: string[]): void {
     if (backPending) return;
     const cur = h.state;
+    const here = new URL(env.location.href);
+    if (!params.some((p) => here.searchParams.has(p))) {
+      // 주소에 이미 그 키가 없다(기록이 먼저 움직였음) → 되돌리지 않고 화면만 주소에 맞춘다(화면이 남아 갇히지 않게)
+      syncPop();
+      return;
+    }
     if (isLayer(cur)) {
       const open = openMap(cur);
       const at = params.map((p) => open[p]).filter((n): n is number => typeof n === "number" && n <= curIdx);
@@ -311,8 +368,7 @@ export function createNavigation(env: NavEnv) {
         changed = true;
       }
     }
-    if (!changed) return;
-    h.replaceState(plainState(cur), "", url.toString());
+    if (changed) h.replaceState(plainState(cur), "", url.toString());
     syncPop();
   }
 
@@ -344,6 +400,8 @@ export function createNavigation(env: NavEnv) {
     const cur = h.state;
     const base = baseOf(cur, curIdx);
     const n = curIdx - base;
+    // 앱이 정한 이동(탭·역할·알림·로그아웃): 닫히는 화면 중 보내는 중인 것도 막지 않는다(바닥 화면의 입력은 그대로)
+    for (const s of sources) if (busy(s) && (s.param !== null || (s.idx != null && s.idx > base))) s.released = true;
     if (n > 0) {
       const d = dialogOf(cur);
       if (d) consumedDialogs.add(d);
@@ -424,6 +482,21 @@ export function createNavigation(env: NavEnv) {
   }
 
   /** 열려 있는 모든 작성 중 화면: 하나라도 있으면 한 번만 묻는다 */
+  /** 덮는 화면·팝업의 작성 중만(바닥 화면의 입력은 그대로 둔다) — 같은 탭을 다시 눌러 덮는 화면만 닫을 때 */
+  function confirmLeaveLayers(): boolean {
+    const base = baseOf(h.state, curIdx);
+    const list = [...sources].filter((s) => active(s) && (s.param !== null || (s.idx != null && s.idx > base)));
+    if (list.length === 0) return true;
+    if (!env.confirm(LEAVE_TEXT)) return false;
+    for (const s of list) s.released = true;
+    return true;
+  }
+
+  /** 바닥 화면인가(덮는 화면·팝업 칸도, 덮는 화면 주소 키도 없음) */
+  function isAtRoot(): boolean {
+    return !isLayer(h.state) && stripNavParams(env.location.href) === null;
+  }
+
   function confirmLeaveAll(): boolean {
     const list = [...sources].filter(active);
     if (list.length === 0) return true;
@@ -449,6 +522,8 @@ export function createNavigation(env: NavEnv) {
     addSource,
     confirmLeave,
     confirmLeaveAll,
+    confirmLeaveLayers,
+    isAtRoot,
     hasDirty,
     syncPop,
   };

@@ -82,9 +82,10 @@ export function ModerationActionDialog({
   const running = useRef(false);
   const mounted = useRef(true);
   // 작성 중 = 사유·설명·신고 처리 방식을 바꿈. 폰 뒤로가기·취소·바깥 누름 전에 묻는다
-  const guard = useLeaveGuard(isDirty({ reason: null, note: "", scope: initialScope }, { reason, note, scope }));
+  // 처리하는 중에는 묻지 않고, 창을 닫는 폰 뒤로가기는 조용히 되돌린다(busy)
+  const guard = useLeaveGuard(isDirty({ reason: null, note: "", scope: initialScope }, { reason, note, scope }), { busy });
   const close = () => {
-    if (busy || !guard.confirmLeave()) return;
+    if (guard.isSending() || !guard.confirmLeave()) return;
     onClose();
   };
 

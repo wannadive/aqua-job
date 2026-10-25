@@ -6,6 +6,7 @@ import {
   idxOf,
   isLayer,
   LEAVE_TEXT,
+  POP_WAIT_MS,
   stripNavParams,
   type LeaveSource,
   type NavEnv,
@@ -21,6 +22,10 @@ function fakeBrowser(startUrl = "https://app.test/") {
   const confirms: string[] = [];
   let answer = true;
   let pending = 0;
+  /** 다음 go를 브라우저가 무시함(기록 그대로) */
+  let ignoreGo = 0;
+  /** 다음 go는 기록만 움직이고 popstate를 안 보냄 */
+  let silentGo = 0;
   /** 앱 쪽 다른 듣는 쪽(화면 훅 등)이 받은 popstate 수 */
   let delivered = 0;
 
@@ -50,13 +55,19 @@ function fakeBrowser(startUrl = "https://app.test/") {
       history.go(-1);
     },
     go(delta = 0) {
+      if (ignoreGo > 0) {
+        ignoreGo--;
+        return;
+      }
+      const silent = silentGo > 0;
+      if (silent) silentGo--;
       pending++;
       setTimeout(() => {
         pending--;
         const t = Math.max(0, Math.min(entries.length - 1, index + delta));
         if (t === index) return;
         index = t;
-        fire(true);
+        if (!silent) fire(true);
       }, 1);
     },
   };
@@ -92,6 +103,12 @@ function fakeBrowser(startUrl = "https://app.test/") {
       return delivered;
     },
     confirms,
+    ignoreNextGo(n = 1) {
+      ignoreGo = n;
+    },
+    silentNextGo() {
+      silentGo = 1;
+    },
     setAnswer(v: boolean) {
       answer = v;
     },
@@ -128,11 +145,19 @@ function setup(url?: string) {
   return { b, nav, userBack: () => rawGo(-1) };
 }
 
-function source(over: Partial<LeaveSource> & { dirty?: boolean } = {}): LeaveSource & { dirty: boolean } {
-  const s = { dirty: true, param: null, idx: null, released: false, ...over } as LeaveSource & { dirty: boolean };
+function source(
+  over: Partial<LeaveSource> & { dirty?: boolean; sending?: boolean } = {},
+): LeaveSource & { dirty: boolean; sending: boolean } {
+  const s = { dirty: true, sending: false, param: null, idx: null, released: false, ...over } as LeaveSource & {
+    dirty: boolean;
+    sending: boolean;
+  };
   s.isDirty = () => s.dirty;
+  s.isBusy = () => s.sending;
   return s;
 }
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 test("모든 칸에 순번이 붙는다(push는 +1, replace는 그대로)", () => {
   const { b, nav } = setup();
@@ -413,4 +438,129 @@ test("앱이 쏜 동기화 popstate(isTrusted=false)는 막지 않는다", () =>
   nav.closeLayer("v_a");
   assert.equal(b.delivered, before + 1);
   assert.equal(b.confirms.length, 0);
+});
+
+// ---- 고침 1차: 되돌리기 popstate가 안 옴 · 키 없는 닫기 · 보내는 중 · 같은 탭
+
+test("되돌리기 go를 브라우저가 두 번 무시하면: 묻지 않고 놓아 준 뒤 화면을 지금 주소에 맞춘다(동기화 popstate)", async () => {
+  const { b, nav, userBack } = setup();
+  nav.pushLayer(new Map([["v_form", "1"]]));
+  const src = source({ param: "v_form" });
+  nav.addSource(src);
+  userBack();
+  b.ignoreNextGo(2); // 사용자 뒤로가기는 이미 큐에 — 되돌리기 + 다시 시도 둘 다 무시
+  await b.settle();
+  const before = b.delivered;
+  await wait(POP_WAIT_MS * 2 + 200);
+  assert.equal(b.confirms.length, 0);
+  assert.equal(b.index, 0, "기록은 사용자가 간 칸");
+  assert.equal(src.released, true, "주소에서 사라진 입력은 놓아 줌");
+  assert.equal(b.delivered, before + 1, "화면이 지금 주소를 다시 읽게 동기화 popstate");
+  // 그 뒤 닫기(키 없음)는 기록을 움직이지 않고 화면만 맞춘다 — 갇히지 않음
+  nav.closeLayer("v_form");
+  await b.settle();
+  assert.equal(b.index, 0);
+  assert.equal(b.delivered, before + 2);
+});
+
+test("되돌리기 go를 한 번 무시하면 다시 시도해서 제자리로 돌아온 뒤 묻는다", async () => {
+  const { b, nav, userBack } = setup();
+  nav.pushLayer(new Map([["v_form", "1"]]));
+  nav.addSource(source({ param: "v_form" }));
+  b.setAnswer(false);
+  userBack();
+  b.ignoreNextGo(1);
+  await wait(POP_WAIT_MS + 200);
+  await b.settle();
+  assert.equal(b.index, 1);
+  assert.deepEqual(b.confirms, [LEAVE_TEXT]);
+});
+
+test("되돌리기가 popstate 없이 일어나도(기록만 움직임) 시간이 지나면 실제 칸을 보고 묻는다", async () => {
+  const { b, nav, userBack } = setup();
+  nav.pushLayer(new Map([["v_form", "1"]]));
+  nav.addSource(source({ param: "v_form" }));
+  b.setAnswer(false);
+  userBack();
+  b.silentNextGo(); // userBack은 이미 큐에 — 다음 go(되돌리기)가 조용히
+  await b.settle();
+  assert.equal(b.confirms.length, 0);
+  await wait(POP_WAIT_MS + 200);
+  assert.equal(b.index, 1);
+  assert.equal(nav.currentIdx, 1);
+  assert.equal(b.confirms.length, 1);
+});
+
+test("closeLayer: 주소에 키가 없으면 기록을 움직이지 않고 동기화 popstate만(쌓은 칸이어도)", async () => {
+  const { b, nav } = setup();
+  nav.pushLayer(new Map([["v_other", "1"]]));
+  const before = b.delivered;
+  nav.closeLayer("v_gone");
+  await b.settle();
+  assert.equal(b.index, 1, "다른 화면 칸을 잘못 닫지 않음");
+  assert.equal(b.delivered, before + 1);
+});
+
+test("보내는 중인 시트: 폰 뒤로가기는 묻지 않고 조용히 되돌린다(반쯤 닫힌 시트 없음)", async () => {
+  const { b, nav, userBack } = setup();
+  let closed = 0;
+  nav.openDialog(() => closed++);
+  const src = source({ idx: 1, sending: true, dirty: false });
+  nav.addSource(src);
+  userBack();
+  await b.settle();
+  assert.equal(b.confirms.length, 0);
+  assert.equal(b.index, 1);
+  assert.equal(closed, 0);
+  assert.equal(nav.hasDirty(), false, "보내는 중에는 작성 중으로 세지 않음(beforeunload·탭 이동에서 묻지 않음)");
+  // 저장 성공 → 놓아 줌 → 닫힘은 그대로 진행
+  src.released = true;
+  b.env.history.back();
+  await b.settle();
+  assert.equal(b.index, 0);
+  assert.equal(closed, 1);
+});
+
+test("보내기 실패(busy 풀림)면 다시 작성 중 보호", async () => {
+  const { b, nav, userBack } = setup();
+  nav.openDialog(() => {});
+  const src = source({ idx: 1, sending: true });
+  nav.addSource(src);
+  assert.equal(nav.hasDirty(), false);
+  src.sending = false;
+  assert.equal(nav.hasDirty(), true);
+  b.setAnswer(false);
+  userBack();
+  await b.settle();
+  assert.equal(b.confirms.length, 1);
+  assert.equal(b.index, 1);
+});
+
+test("resetToRoot(탭·역할·알림·로그아웃)는 보내는 중인 덮는 화면도 막지 않는다", async () => {
+  const { b, nav } = setup();
+  nav.pushLayer(new Map([["v_form", "1"]]));
+  nav.addSource(source({ param: "v_form", sending: true }));
+  let done = 0;
+  nav.resetToRoot(() => done++);
+  await b.settle();
+  assert.equal(b.index, 0);
+  assert.equal(done, 1);
+  assert.equal(b.confirms.length, 0);
+});
+
+test("같은 탭: 바닥이면 isAtRoot, 덮는 화면의 작성 중만 묻고 바닥 화면 입력은 놓아 주지 않는다", () => {
+  const { b, nav } = setup();
+  assert.equal(nav.isAtRoot(), true);
+  const root = source({ idx: 0, dirty: true });
+  nav.addSource(root);
+  assert.equal(nav.confirmLeaveLayers(), true, "덮는 화면이 없으면 묻지 않음");
+  assert.equal(b.confirms.length, 0);
+  nav.openDialog(() => {});
+  assert.equal(nav.isAtRoot(), false);
+  const sheet = source({ idx: 1 });
+  nav.addSource(sheet);
+  assert.equal(nav.confirmLeaveLayers(), true);
+  assert.equal(b.confirms.length, 1);
+  assert.equal(sheet.released, true);
+  assert.equal(root.released, false, "바닥 화면의 입력은 그대로 보호");
 });

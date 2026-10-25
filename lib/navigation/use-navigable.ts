@@ -52,7 +52,10 @@ export function closeNavigable(...paramNames: string[]): void {
   getNav()?.closeLayer(...paramNames);
 }
 
-/** 화면 안 [뒤로] — 앱이 쌓은 칸이면 history.back, 아니면 fallback */
+/**
+ * 화면 안 [뒤로] — 앱이 쌓은 칸이면 history.back, 아니면 fallback.
+ * 주의(워너다이브와 다름): 바닥 화면 위 팝업 칸도 '쌓은 칸'이라, 그 팝업 안에서 부르면 팝업만 닫힌다(fallback은 안 불림).
+ */
 export function goBackInApp(fallback: () => void): void {
   const n = getNav();
   if (n) n.goBackInApp(fallback);
@@ -72,6 +75,28 @@ export function leaveToRoot(then: () => void): boolean {
   if (!n.confirmLeaveAll()) return false;
   n.resetToRoot(then);
   return true;
+}
+
+/**
+ * 같은 탭을 다시 누름: 덮는 화면·팝업만 닫는다(그 위 작성 중만 묻고, 바닥 화면의 입력은 그대로 — 놓아 주지 않는다).
+ * 이미 바닥이면 아무것도 안 함. 취소하면 false.
+ */
+export function closeOverlays(then?: () => void): boolean {
+  const n = getNav();
+  if (!n || n.isAtRoot()) return true;
+  if (!n.confirmLeaveLayers()) return false;
+  n.resetToRoot(() => then?.());
+  return true;
+}
+
+/** 바닥 화면인가(덮는 화면·팝업이 없음) */
+export function isAtRoot(): boolean {
+  return getNav()?.isAtRoot() ?? true;
+}
+
+/** 로그아웃·계정 바뀜: 묻지 않고 덮는 화면 칸·주소 키를 바닥까지 정리(다음 계정이 물려받지 않게) */
+export function resetNavToRoot(): void {
+  getNav()?.resetToRoot(() => {});
 }
 
 /** 작성 중인 화면이 있으면 한 번 묻는다(나가도 되면 true) */
@@ -184,13 +209,24 @@ export function useBackToClose(open: boolean | undefined, onOpenChange?: (open: 
  */
 export function useLeaveGuard(
   dirty: boolean,
-  opts: { param?: string; anchor?: "mount" | "dirty" } = {},
-): { confirmLeave: () => boolean; release: () => void } {
+  opts: { param?: string; anchor?: "mount" | "dirty"; busy?: boolean } = {},
+): { confirmLeave: () => boolean; release: () => void; isSending: () => boolean } {
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
+  // 보내는 중(저장·제출): 묻지 않고, 이 화면을 닫는 폰 뒤로가기는 조용히 되돌린다(반쯤 닫힌 시트 방지).
+  // 실패하면 busy가 풀리면서 다시 작성 중 보호가 걸린다.
+  const busy = !!opts.busy;
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
   const srcRef = useRef<LeaveSource | null>(null);
   if (srcRef.current === null) {
-    srcRef.current = { isDirty: () => dirtyRef.current, param: opts.param ?? null, idx: null, released: false };
+    srcRef.current = {
+      isDirty: () => dirtyRef.current,
+      isBusy: () => busyRef.current,
+      param: opts.param ?? null,
+      idx: null,
+      released: false,
+    };
   }
   const src = srcRef.current;
   const anchor = opts.param ? "param" : (opts.anchor ?? "dirty");
@@ -205,17 +241,19 @@ export function useLeaveGuard(
   // 다 지웠거나 저장해서 깨끗해지면 다시 처음부터(다음에 바뀌면 다시 묻는다)
   useEffect(() => {
     const n = getNav();
-    if (!dirty) {
-      src.released = false;
+    if (!dirty) src.released = false;
+    if (!dirty && !busy) {
       if (anchor === "dirty") src.idx = null;
     } else if (anchor === "dirty" && src.idx === null && n) {
       src.idx = n.currentIdx;
     }
-  }, [dirty, src, anchor]);
+  }, [dirty, busy, src, anchor]);
 
   const confirmLeave = useCallback(() => getNav()?.confirmLeave(src) ?? true, [src]);
   const release = useCallback(() => {
     src.released = true;
   }, [src]);
-  return { confirmLeave, release };
+  /** 보내는 중이고 아직 놓아 주지 않음 — 이때 닫기(바깥 누름·Esc 등)는 막는다. 저장 성공 뒤 release()하면 닫힘 */
+  const isSending = useCallback(() => busyRef.current && !src.released, [src]);
+  return { confirmLeave, release, isSending };
 }

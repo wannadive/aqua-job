@@ -113,10 +113,11 @@ export function JobForm({
   const [baseline, setBaseline] = useState<Draft>(EMPTY);
   // 마감일은 일정을 따라 자동으로 바뀌므로 직접 고쳤을 때만 비교한다
   const dirty = isDirty({ ...baseline, deadline: deadlineTouched ? baseline.deadline : "" }, { ...d, deadline: deadlineTouched ? d.deadline : "" });
-  const guard = useLeaveGuard(dirty, { param: JOB_FORM_PARAM });
+  // 올리는 중에는 묻지 않고, 화면을 닫는 폰 뒤로가기는 조용히 되돌린다(busy). 실패하면 다시 보호
+  const guard = useLeaveGuard(dirty, { param: JOB_FORM_PARAM, busy });
   /** 화면 닫기(뒤로·취소): 작성 중이면 묻는다 */
   const close = () => {
-    if (!guard.confirmLeave()) return;
+    if (guard.isSending() || !guard.confirmLeave()) return;
     onClose();
   };
 

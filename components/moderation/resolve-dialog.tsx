@@ -31,9 +31,10 @@ export function ResolveReportDialog({
   const running = useRef(false);
   const mounted = useRef(true);
   // 작성 중 = 처리 메모를 적음. 폰 뒤로가기·돌아가기·바깥 누름 전에 묻는다
-  const guard = useLeaveGuard(isDirty("", memo));
+  // 처리하는 중에는 묻지 않고, 창을 닫는 폰 뒤로가기는 조용히 되돌린다(busy)
+  const guard = useLeaveGuard(isDirty("", memo), { busy });
   const close = () => {
-    if (busy || !guard.confirmLeave()) return;
+    if (guard.isSending() || !guard.confirmLeave()) return;
     onClose();
   };
 

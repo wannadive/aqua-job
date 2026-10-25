@@ -14,7 +14,7 @@ import {
   type NotificationTarget,
 } from "@/lib/notifications/link";
 import { readSwOpenLink, SW_ACK, type SwOpenLink } from "@/lib/notifications/sw-message";
-import { cleanNavOnLoad, leaveToRoot } from "@/lib/navigation/use-navigable";
+import { cleanNavOnLoad, leaveToRoot, resetNavToRoot } from "@/lib/navigation/use-navigable";
 import { LoginForm } from "@/components/app-shell/auth/login-form";
 import { SignupForm } from "@/components/app-shell/auth/signup-form";
 import { SignupSelect } from "@/components/app-shell/auth/signup-select";
@@ -68,10 +68,16 @@ export function AppRouter({ adminEntry = false }: { adminEntry?: boolean }) {
   const userId = user?.id ?? null;
   const ready_ = !!user && user.accountStatus === "active";
 
-  // 계정이 바뀌거나 로그아웃하면 남은 이동 요청을 버린다
+  // 계정이 바뀌거나 로그아웃하면 남은 이동 요청을 버리고, 덮는 화면 기록 칸·주소 키(v_…)를 바닥까지 정리한다
+  // (다음 계정이 앞 계정의 덮는 화면 칸을 물려받지 않게 — 처음 그릴 때는 바닥이라 아무 일 없음)
+  const prevUserId = useRef(userId);
   useEffect(() => {
     setNav(null);
     setLaunchLink(null);
+    if (prevUserId.current !== userId) {
+      prevUserId.current = userId;
+      resetNavToRoot();
+    }
   }, [userId]);
 
   const goTarget = useCallback(

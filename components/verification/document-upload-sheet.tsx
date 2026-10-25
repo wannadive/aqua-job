@@ -38,7 +38,8 @@ export function DocumentUploadSheet({
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   // 작성 중 = 사진을 골랐거나 칸을 적음. 폰 뒤로가기·바깥 누름·닫기 전에 묻는다
-  const guard = useLeaveGuard(open && (file !== null || isDirty({ org: "", grade: "", number: "" }, { org, grade, number })));
+  // 제출하는 중에는 묻지 않고, 시트를 닫는 폰 뒤로가기는 조용히 되돌린다(busy)
+  const guard = useLeaveGuard(open && (file !== null || isDirty({ org: "", grade: "", number: "" }, { org, grade, number })), { busy });
 
   useEffect(() => {
     if (!open) {
@@ -99,8 +100,7 @@ export function DocumentUploadSheet({
     <Sheet
       open={open}
       onOpenChange={(v) => {
-        if (busyRef.current) return;
-        if (!v && !guard.confirmLeave()) return;
+        if (!v && (guard.isSending() || !guard.confirmLeave())) return;
         onOpenChange(v);
       }}
     >

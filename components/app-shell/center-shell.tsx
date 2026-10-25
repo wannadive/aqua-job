@@ -19,7 +19,7 @@ import { CenterProfileForm } from "@/components/center-listing/center-profile-fo
 import { InstructorFinder } from "@/components/offers/instructor-finder";
 import { useSentOffers } from "@/components/offers/use-offers";
 import { filledCount } from "@/lib/offers/logic";
-import { leaveToRoot, useNavigableValue } from "@/lib/navigation/use-navigable";
+import { closeOverlays, confirmLeaveAll, leaveToRoot, useNavigableValue } from "@/lib/navigation/use-navigable";
 import { JOB_FORM_PARAM } from "@/components/jobs/job-form";
 
 type Tab = "home" | "jobs" | "applicants" | "instructors" | "settings";
@@ -146,7 +146,10 @@ function HomeTab({
         </div>
       </section>
 
-      <button type="button" onClick={() => void logout()} className="w-full py-3 text-center text-sm font-medium text-muted">
+      <button type="button" onClick={() => {
+        // 작성 중인 내용이 있으면 먼저 묻는다
+        if (confirmLeaveAll()) void logout();
+      }} className="w-full py-3 text-center text-sm font-medium text-muted">
         로그아웃
       </button>
     </div>
@@ -200,11 +203,18 @@ export function CenterShell({ nav = null, onNavConsumed }: { nav?: CenterNav | n
    * 탭 이동(아래 탭·홈의 바로가기·다른 화면에서 탭으로): 작성 중이면 묻고, 덮는 화면·팝업을 모두 닫은 뒤 바꾼다.
    * before: 탭을 바꾸기 직전에 할 일(지원자 필터 등)
    */
-  const goTab = (key: Tab, before?: () => void) =>
+  const goTab = (key: Tab, before?: () => void) => {
+    // 같은 탭: 바닥이면 아무것도 안 함, 덮는 화면이 있으면 그것만 닫는다(바닥 화면의 입력은 묻지도 놓지도 않음)
+    if (key === tab) {
+      closeOverlays(before);
+      return;
+    }
     leaveToRoot(() => {
+      setOverlay(null); // 공고 작성 화면이 남지 않게(기록은 이미 바닥 — 주소에 키가 없으면 화면만 맞춘다)
       before?.();
       setTab(key);
     });
+  };
 
   // 알림 → 탭 이동 + 해당 항목. 이동한 화면의 데이터만 다시 불러온다.
   useEffect(() => {

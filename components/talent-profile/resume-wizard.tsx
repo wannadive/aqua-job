@@ -30,7 +30,7 @@ export function ResumeWizard({ onComplete }: { onComplete: () => Promise<void> }
   const pickStep = (d: Draft) =>
     Object.fromEntries(stepKeys(curKey).map((k) => [k, (d as Record<string, unknown>)[k]]));
   // 지금 단계에서 저장하지 않은 답이 있으면 작성 중 — 역할 전환·알림 이동·폰 뒤로가기(앱 밖으로)·새로 고침 전에 묻는다
-  useLeaveGuard(loaded && isDirty(pickStep(saved), pickStep(draft)), { anchor: "mount" });
+  useLeaveGuard(loaded && isDirty(pickStep(saved), pickStep(draft)), { anchor: "mount", busy });
 
   // 불러오기에 실패하면 빈 칸으로 이어 가지 않는다(저장된 답을 빈 값으로 덮어쓰는 것을 막는다).
   useEffect(() => {
