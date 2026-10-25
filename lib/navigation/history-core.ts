@@ -169,9 +169,15 @@ export function createNavigation(env: NavEnv) {
     affected: LeaveSource[];
     /** 보내는 중이라 되돌리기만(묻지 않음) */
     silent: boolean;
-    retried: boolean;
+    /** 다시 시도한 go의 이동량(null = 아직 안 함) — 첫 되돌리기가 늦게 오면 둘 다 적용될 수 있다 */
+    retryStep: number | null;
     timer: unknown;
   } | null = null;
+  /**
+   * 되돌리기를 다시 시도한 뒤 제자리로 돌아왔으면, 아직 오지 않은 나머지 go(늦은 첫 시도 또는 재시도)가 기록을
+   * 한 번 더 움직일 수 있다. 그 이동(같은 크기 step)은 잠깐 동안 '바로잡기'로 보고 화면에 전하지 않고 되돌린다.
+   */
+  let correction: { step: number; until: number; returning: boolean } | null = null;
   /** resetToRoot 대기: 바닥 칸에 닿으면 then() */
   let pendingReset: { base: number; then: () => void; timer: unknown } | null = null;
   let dialogSeq = 0;
@@ -243,22 +249,29 @@ export function createNavigation(env: NavEnv) {
    * 되돌리기 popstate가 제때 오지 않음: 한 번 더 시도하고, 그래도 안 되면 지금 기록(주소)에 화면을 맞춘다 —
    * 쓰던 내용은 놓아 주고(이미 주소에서 사라졌다) 동기화 popstate. 화면과 기록이 어긋난 채 남지 않게.
    */
+  /** 되돌리기 끝: 다시 시도한 적이 있으면 남은 go를 바로잡을 준비 → 묻기 */
+  function finishRestore(r: NonNullable<typeof restoring>) {
+    restoring = null;
+    env.clearTimeout(r.timer);
+    if (r.retryStep !== null) correction = { step: r.retryStep, until: env.now() + POP_WAIT_MS, returning: false };
+    afterRestored(r);
+  }
+
   function restoreTimedOut() {
     const r = restoring;
     if (!r) return;
     // popstate 없이 기록만 움직였을 수도 있다 → 실제 지금 칸으로 판단
     curIdx = idxOf(h.state);
     if (curIdx === r.expectIdx) {
-      restoring = null;
-      afterRestored(r);
+      finishRestore(r);
       return;
     }
-    if (!r.retried) {
-      r.retried = true;
+    if (r.retryStep === null) {
+      // 첫 되돌리기가 늦게라도 올 수 있다 — 둘 다 적용되면 finishRestore 뒤 correction이 넘친 이동을 되돌린다
+      const step = r.expectIdx - curIdx;
+      r.retryStep = step;
       r.timer = env.setTimeout(restoreTimedOut, POP_WAIT_MS);
-      // 바로 앞에서 실제 칸을 다시 읽었다(늦게 도착한 첫 되돌리기를 두 번 적용하지 않게, 남은 차이만큼만)
-      const left = r.expectIdx - idxOf(h.state);
-      if (left !== 0) nativeGo(left);
+      nativeGo(step);
       return;
     }
     restoring = null;
@@ -286,13 +299,26 @@ export function createNavigation(env: NavEnv) {
       // 되돌리는 중의 popstate는 화면에 전하지 않는다(화면은 그대로 있었다)
       e.stopImmediatePropagation();
       curIdx = newIdx;
-      if (newIdx === restoring.expectIdx) {
-        const r = restoring;
-        restoring = null;
-        env.clearTimeout(r.timer);
-        afterRestored(r);
-      }
+      if (newIdx === restoring.expectIdx) finishRestore(restoring);
       return;
+    }
+
+    if (correction) {
+      if (env.now() > correction.until) correction = null;
+      else if (correction.returning) {
+        // 넘친 이동을 되돌린 popstate — 화면에 전하지 않음
+        e.stopImmediatePropagation();
+        curIdx = newIdx;
+        correction = null;
+        return;
+      } else if (e.isTrusted && newIdx - prevIdx === correction.step) {
+        // 늦게 도착한 나머지 되돌리기 go가 한 번 더 움직였다 → 바로잡기(새 이동으로 보지 않음)
+        e.stopImmediatePropagation();
+        curIdx = newIdx;
+        correction.returning = true;
+        nativeGo(-correction.step);
+        return;
+      }
     }
 
     if (e.isTrusted && newIdx !== prevIdx) {
@@ -310,7 +336,7 @@ export function createNavigation(env: NavEnv) {
           delta: newIdx - prevIdx,
           affected,
           silent: sending.length > 0,
-          retried: false,
+          retryStep: null,
           timer: env.setTimeout(restoreTimedOut, POP_WAIT_MS),
         };
         nativeGo(prevIdx - newIdx);

@@ -49,7 +49,10 @@ export function OfferComposer({
   const [jobId, setJobId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  // 두 번 보내기 막기 전용(닫기를 막는 데는 쓰지 않는다 — 닫기는 guard.isSending()이 15초 상한·놓아 줌까지 본다)
   const busyRef = useRef(false);
+  // 열 때마다(대상이 바뀌거나 닫힐 때마다) 바뀌는 번호 — 늦게 온 결과가 다시 연 다른 시트를 건드리지 않게
+  const openSeq = useRef(0);
   const [apps, setApps] = useState<JobApplication[]>([]);
   const instructorId = instructor?.id ?? null;
   const openJobs = jobs.filter((j) => j.status === "open");
@@ -58,15 +61,19 @@ export function OfferComposer({
   // 보내는 중에는 묻지 않고, 시트를 닫는 폰 뒤로가기는 조용히 되돌린다(busy)
   const guard = useLeaveGuard(instructorId !== null && isDirty({ jobId: null, message: "" }, { jobId, message }), { busy: busy && instructorId !== null });
   const close = () => {
-    if (busyRef.current || guard.isSending() || !guard.confirmLeave()) return;
+    if (guard.isSending() || !guard.confirmLeave()) return;
     onClose();
   };
 
   // 열 때마다 새로 시작. 이미 지원한 강사 안내용으로 모집 중 공고의 지원을 읽는다(실패해도 서버가 다시 막는다).
   useEffect(() => {
+    openSeq.current++;
     setJobId(null);
     setMessage("");
     setApps([]);
+    // 닫히거나 다른 강사로 열리면 보내는 중 표시를 푼다(다시 열 때 보내는 중으로 시작하지 않게)
+    busyRef.current = false;
+    setBusy(false);
   }, [instructorId]);
   useEffect(() => {
     if (!instructorId) return;
@@ -94,6 +101,9 @@ export function OfferComposer({
     if (!target || !job || busyRef.current || offersUnavailable) return;
     busyRef.current = true;
     setBusy(true);
+    const token = openSeq.current;
+    // 이 시트가 그 사이 닫혔거나 다른 강사로 다시 열렸는가(그러면 결과 안내·목록 새로 고침만, 시트는 건드리지 않음)
+    const stale = () => openSeq.current !== token;
     try {
       const res = await sendOffer(job, target, message);
       if (res.error) {
@@ -102,15 +112,21 @@ export function OfferComposer({
         return;
       }
       toast.success("제안을 보냈어요. 강사가 답하면 보낸 제안에서 확인할 수 있어요");
+      if (stale()) {
+        void onSent();
+        return;
+      }
       guard.release(); // 보냈으니 닫을 때 묻지 않는다
       try {
         await onSent();
       } finally {
-        onClose();
+        if (!stale()) onClose();
       }
     } finally {
-      busyRef.current = false;
-      setBusy(false);
+      if (!stale()) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   };
 

@@ -29,6 +29,8 @@ function fakeBrowser(startUrl = "https://app.test/") {
   let ignoreGo = 0;
   /** 다음 go는 기록만 움직이고 popstate를 안 보냄 */
   let silentGo = 0;
+  /** 다음 go를 이만큼 늦게(ms) 적용 */
+  let delayGo = 0;
   /** 앱 쪽 다른 듣는 쪽(화면 훅 등)이 받은 popstate 수 */
   let delivered = 0;
 
@@ -64,6 +66,8 @@ function fakeBrowser(startUrl = "https://app.test/") {
       }
       const silent = silentGo > 0;
       if (silent) silentGo--;
+      const delay = delayGo || 1;
+      delayGo = 0;
       pending++;
       setTimeout(() => {
         pending--;
@@ -71,7 +75,7 @@ function fakeBrowser(startUrl = "https://app.test/") {
         if (t === index) return;
         index = t;
         if (!silent) fire(true);
-      }, 1);
+      }, delay);
     },
   };
 
@@ -112,6 +116,9 @@ function fakeBrowser(startUrl = "https://app.test/") {
     },
     ignoreNextGo(n = 1) {
       ignoreGo = n;
+    },
+    delayNextGo(ms: number) {
+      delayGo = ms;
     },
     silentNextGo() {
       silentGo = 1;
@@ -633,7 +640,7 @@ test("보내는 중 되돌리기가 두 번 다 실패하면: 보내던 화면�
   assert.equal(closed, 1, "동기화 popstate로 시트가 닫힘");
 });
 
-test("다시 시도 전에 실제 칸을 다시 읽어 늦게 온 첫 되돌리기를 두 번 적용하지 않는다", async () => {
+test("되돌리기가 popstate 없이 제자리로 오면 다시 시도하지 않고 묻는다", async () => {
   const { b, nav, userBack } = setup();
   nav.pushLayer(new Map([["v_form", "1"]]));
   nav.addSource(source({ param: "v_form" }));
@@ -645,4 +652,29 @@ test("다시 시도 전에 실제 칸을 다시 읽어 늦게 온 첫 되돌리�
   await b.settle();
   assert.equal(b.index, 1, "넘어가지 않고 제자리");
   assert.equal(b.confirms.length, 1);
+});
+
+// ---- 고침 3차: 늦게 온(버려지지 않은) 첫 되돌리기
+
+test("첫 되돌리기가 늦게 와서 재시도와 둘 다 적용돼도, 넘친 이동은 바로잡고 화면에 전하지 않는다", async () => {
+  const { b, nav, userBack } = setup();
+  nav.pushLayer(new Map([["v_form", "1"]])); // 1
+  nav.pushLayer(new Map([["v_sub", "1"]])); // 2
+  const src = source({ param: "v_form" });
+  nav.addSource(src);
+  userBack(); // 2 → 1 : 하위 화면만 닫힘(묻지 않음)
+  await b.settle();
+  assert.equal(b.index, 1);
+  b.setAnswer(false);
+  userBack(); // 1 → 0 : 입력 화면이 닫힘 → 되돌리기(go +1)
+  b.delayNextGo(POP_WAIT_MS + 400); // ← 되돌리기 go가 늦게 도착(버려지지 않음)
+  await wait(20);
+  const before = b.delivered;
+  // POP_WAIT_MS: 재시도 go(+1) → 1 도착 → 묻기(취소) · 그 뒤 늦은 첫 go(+1) → 2 → 바로잡기 → 1
+  await wait(POP_WAIT_MS + 900);
+  await b.settle();
+  assert.equal(b.index, 1, "넘친 이동을 되돌려 제자리");
+  assert.equal(nav.currentIdx, 1);
+  assert.deepEqual(b.confirms, [LEAVE_TEXT], "한 번만 묻는다");
+  assert.equal(b.delivered, before, "넘친 이동(하위 화면 다시 열림)은 화면에 전하지 않음");
 });

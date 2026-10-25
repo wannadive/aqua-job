@@ -34,6 +34,8 @@ export function ApplySheet({
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
+  // 열 때마다(대상이 바뀌거나 닫힐 때마다) 바뀌는 번호 — 늦게 온 결과가 다시 연 다른 시트를 건드리지 않게
+  const openSeq = useRef(0);
   const [missing, setMissing] = useState<string[] | null>(null);
   const [resumeError, setResumeError] = useState(false);
   const jobId = job?.id ?? null;
@@ -46,7 +48,13 @@ export function ApplySheet({
   };
 
   useEffect(() => {
-    if (!jobId) return;
+    openSeq.current++;
+    if (!jobId) {
+      // 닫히면 보내는 중 표시를 푼다(다시 열 때 보내는 중으로 시작하지 않게)
+      setBusy(false);
+      submitting.current = false;
+      return;
+    }
     setMessage("");
     setBusy(false);
     submitting.current = false;
@@ -68,27 +76,40 @@ export function ApplySheet({
     if (!job || submitting.current) return;
     submitting.current = true;
     setBusy(true);
+    const token = openSeq.current;
+    // 이 시트가 그 사이 닫혔거나 다른 공고로 다시 열렸는가(그러면 결과 안내·목록 새로 고침만, 시트는 건드리지 않음)
+    const stale = () => openSeq.current !== token;
     const res = await applyToJob(job.id, message);
     if (res.error) {
       // 이미 마감·지원됨 등으로 바뀌었을 수 있다: 상태를 다시 불러오고 시트를 닫는다
       toast.error(res.error);
+      if (stale()) {
+        void onApplied();
+        return;
+      }
       guard.release(); // 서버가 거절해 닫는다(이미 마감·지원됨 등) — 다시 묻지 않음
       try {
         await onApplied();
       } finally {
-        submitting.current = false;
-        setBusy(false);
-        onClose();
+        if (!stale()) {
+          submitting.current = false;
+          setBusy(false);
+          onClose();
+        }
       }
       return;
     }
     toast.success("지원했어요");
+    if (stale()) {
+      void onApplied();
+      return;
+    }
     guard.release(); // 보냈으니 닫을 때 묻지 않는다
     // 성공하면 닫힐 때까지 busy 유지(이중 제출 방지). 새로 불러오다 실패해도 시트는 닫는다.
     try {
       await onApplied();
     } finally {
-      onClose();
+      if (!stale()) onClose();
     }
   };
 

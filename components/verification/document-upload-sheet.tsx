@@ -36,20 +36,26 @@ export function DocumentUploadSheet({
   const [grade, setGrade] = useState("");
   const [number, setNumber] = useState("");
   const [busy, setBusy] = useState(false);
+  // 두 번 제출 막기 전용(닫기는 guard.isSending()이 막는다)
   const busyRef = useRef(false);
+  // 열고 닫을 때마다 바뀌는 번호 — 늦게 온 결과가 다시 연 시트(다른 서류)를 건드리지 않게
+  const openSeq = useRef(0);
   // 작성 중 = 사진을 골랐거나 칸을 적음. 폰 뒤로가기·바깥 누름·닫기 전에 묻는다
   // 제출하는 중에는 묻지 않고, 시트를 닫는 폰 뒤로가기는 조용히 되돌린다(busy)
   const guard = useLeaveGuard(open && (file !== null || isDirty({ org: "", grade: "", number: "" }, { org, grade, number })), { busy: busy && open });
 
   useEffect(() => {
+    openSeq.current++;
     if (!open) {
       setFile(null);
       setOrg("");
       setGrade("");
       setNumber("");
+      // 닫히면 제출 중 표시를 푼다(다시 열 때 제출 중으로 시작하지 않게)
+      busyRef.current = false;
       setBusy(false);
     }
-  }, [open]);
+  }, [open, docType]);
 
   useEffect(() => {
     if (!file) {
@@ -76,6 +82,9 @@ export function DocumentUploadSheet({
     if (!docType || !file || busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
+    const token = openSeq.current;
+    // 이 시트가 그 사이 닫혔거나 다시 열렸는가(그러면 결과 안내·목록 새로 고침만, 시트는 건드리지 않음)
+    const stale = () => openSeq.current !== token;
     try {
       const res = await submitDocument({
         docType,
@@ -87,12 +96,18 @@ export function DocumentUploadSheet({
         return;
       }
       toast.success("서류를 제출했어요. 확인이 끝나면 여기에 표시돼요");
+      if (stale()) {
+        onSubmitted();
+        return;
+      }
       guard.release(); // 제출했으니 닫을 때 묻지 않는다
       onOpenChange(false);
       onSubmitted();
     } finally {
-      busyRef.current = false;
-      setBusy(false);
+      if (!stale()) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   };
 
