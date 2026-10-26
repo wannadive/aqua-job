@@ -9,10 +9,11 @@ import { listApplicantsForJobs, selectApplicant } from "@/lib/jobs/api";
 import { canSelect, filterApplicants, formatAppliedAt } from "@/lib/jobs/applicants";
 import { filledCount } from "@/lib/offers/logic";
 import type { Offer } from "@/lib/offers/types";
-import { sortOpenFirst } from "@/lib/jobs/logic";
+import { closedNotice, sortOpenFirst } from "@/lib/jobs/logic";
 import type { JobApplication, JobSummary } from "@/lib/jobs/types";
 import { ApplicantContact } from "./applicant-contact";
 import { ApplicantResume } from "./applicant-resume";
+import { useNavigableValue, useLeaveGuard } from "@/lib/navigation/use-navigable";
 
 const CHIP: Record<JobApplication["status"], { label: string; cls: string }> = {
   applied: { label: "지원함", cls: "bg-surface text-ink" },
@@ -64,9 +65,12 @@ export function Applicants({
   const [apps, setApps] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-  const [resumeOf, setResumeOf] = useState<JobApplication | null>(null);
+  // 지원자 이력서(덮는 화면): 방문 기록 한 칸 — 폰 뒤로가기·[뒤로]가 같은 길로 닫는다
+  const [resumeOf, setResumeOf] = useNavigableValue<JobApplication>("v_appresume");
   const [selecting, setSelecting] = useState<JobApplication | null>(null);
   const [busy, setBusy] = useState(false);
+  // 처리하는 중에는 확인 창을 닫는 폰 뒤로가기를 조용히 되돌린다(창과 기록 칸이 어긋나지 않게, 15초 상한) — 시트와 같은 장치
+  const guard = useLeaveGuard(false, { busy: busy && selecting !== null });
   const busyRef = useRef(false);
   const [contactOpen, setContactOpen] = useState<Set<string>>(new Set());
   const seq = useRef(0);
@@ -134,9 +138,9 @@ export function Applicants({
       // 마감 안내는 선택 뒤 새로 읽은 공고 상태로만 판단한다(누르기 전 숫자로 추측하지 않음)
       const [, fresh] = await Promise.all([reload(), onChanged()]);
       const job = Array.isArray(fresh) ? fresh.find((j) => j.id === target.jobId) : undefined;
-      if (job && job.status !== "open") {
-        toast("모집 인원이 다 차서 공고가 마감됐어요");
-      }
+      // 실제 마감 이유(인원 참·기간 지남·직접 마감)대로 — "인원이 다 차서"는 인원이 찼을 때만
+      const notice = job ? closedNotice(job.status) : null;
+      if (notice) toast(notice);
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -320,7 +324,7 @@ export function Applicants({
           );
         })}
 
-      <Dialog open={selecting !== null} onOpenChange={(v) => !busy && !v && setSelecting(null)}>
+      <Dialog open={selecting !== null} onOpenChange={(v) => !v && !guard.isSending() && setSelecting(null)}>
         <DialogContent className="max-w-sm">
           <DialogTitle>{selecting?.applicantName ?? "이 지원자"}님을 선택할까요?</DialogTitle>
           <DialogDescription>선택하면 이 강사의 연락처가 열리고 되돌릴 수 없어요</DialogDescription>

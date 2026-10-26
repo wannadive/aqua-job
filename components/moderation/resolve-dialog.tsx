@@ -7,6 +7,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } f
 import { Textarea } from "@/components/ui/textarea";
 import { adminResolveReport } from "@/lib/moderation/api";
 import { NOTE_MAX, charCount, confirmText, isNetworkErrorText, memoInputError } from "@/lib/moderation/logic";
+import { isDirty } from "@/lib/navigation/dirty";
+import { useLeaveGuard } from "@/lib/navigation/use-navigable";
 
 export interface ResolveRequest {
   reportId: string;
@@ -28,6 +30,13 @@ export function ResolveReportDialog({
   const [formError, setFormError] = useState<string | null>(null);
   const running = useRef(false);
   const mounted = useRef(true);
+  // 작성 중 = 처리 메모를 적음. 폰 뒤로가기·돌아가기·바깥 누름 전에 묻는다
+  // 처리하는 중에는 묻지 않고, 창을 닫는 폰 뒤로가기는 조용히 되돌린다(busy)
+  const guard = useLeaveGuard(isDirty("", memo), { busy });
+  const close = () => {
+    if (guard.isSending() || !guard.confirmLeave()) return;
+    onClose();
+  };
 
   useEffect(() => {
     mounted.current = true;
@@ -70,6 +79,7 @@ export function ResolveReportDialog({
     } else {
       toast.success(request.status === "resolved" ? "신고를 '조치함'으로 닫았어요" : "신고를 기각했어요");
     }
+    guard.release(); // 처리했거나(또는 이미 처리됨) 닫는다 — 묻지 않음
     if (!mounted.current) return;
     // 성공이든 '이미 처리됨'이든 목록을 새로 불러와 실제 상태를 보여 준다
     await finish();
@@ -77,7 +87,7 @@ export function ResolveReportDialog({
   };
 
   return (
-    <Dialog open onOpenChange={(v) => !v && !busy && onClose()}>
+    <Dialog open onOpenChange={(v) => !v && close()}>
       <DialogContent className="max-h-[90dvh] max-w-sm overflow-y-auto">
         <DialogTitle>{ct.title}</DialogTitle>
         <DialogDescription className="sr-only">신고 처리 내용을 확인합니다</DialogDescription>
@@ -115,7 +125,7 @@ export function ResolveReportDialog({
           </p>
         )}
         <DialogFooter className="gap-2">
-          <Button variant="outline" className="h-11 border-line" disabled={busy} onClick={onClose}>
+          <Button variant="outline" className="h-11 border-line" disabled={busy} onClick={close}>
             돌아가기
           </Button>
           <Button className="h-11 bg-ink text-white" disabled={busy} onClick={() => void run()}>

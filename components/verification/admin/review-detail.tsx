@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronLeft, ImageOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,11 @@ import {
 } from "@/lib/verification/admin-api";
 import { DOC_TYPES } from "@/lib/verification/config";
 import { kstDate, ROLE_LABEL } from "@/lib/verification/admin-logic";
+import { isDirty } from "@/lib/navigation/dirty";
+import { useLeaveGuard } from "@/lib/navigation/use-navigable";
+
+/** 서류 상세(덮는 화면)를 여는 주소 키 — 확인 대기열이 연다 */
+export const REVIEW_DETAIL_PARAM = "v_review";
 
 const QUICK_REASONS = ["사진 흐림", "이름 불일치", "기간 만료", "다른 서류"] as const;
 
@@ -48,6 +53,20 @@ export function ReviewDetail({ item, onBack }: { item: ReviewItem; onBack: () =>
   const [busy, setBusy] = useState(false);
   /** 확인·반려는 끝났는데 원본 삭제만 실패한 경우, 어느 쪽이었는지 */
   const [purgePending, setPurgePending] = useState<"verified" | "rejected" | null>(null);
+  // 연타로 두 번 처리되지 않게(상태 갱신 전 두 번째 누름)
+  const running = useRef(false);
+  // 작성 중 = 유효기간·반려 사유를 적음(반려 칸을 열기만 한 건 아님). 폰 뒤로가기·[목록] 전에 묻는다
+  // 처리하는 중에는 묻지 않고, 화면을 닫는 폰 뒤로가기는 조용히 되돌린다(busy)
+  const guard = useLeaveGuard(isDirty({ validUntil: "", reason: "" }, { validUntil, reason }), { param: REVIEW_DETAIL_PARAM, busy });
+  const back = () => {
+    if (guard.isSending() || !guard.confirmLeave()) return;
+    onBack();
+  };
+  /** 처리가 끝나 목록으로 — 묻지 않는다 */
+  const done = () => {
+    guard.release();
+    onBack();
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -70,11 +89,12 @@ export function ReviewDetail({ item, onBack }: { item: ReviewItem; onBack: () =>
   const reload = () => setAttempt((n) => n + 1);
 
   const verify = async () => {
-    if (busy) return;
+    if (busy || running.current) return;
     if (cfg.hasExpiry && !validUntil) {
       toast.error("유효기간을 입력해 주세요");
       return;
     }
+    running.current = true;
     setBusy(true);
     try {
       const res = await reviewDocument({ docId: item.id, docType: item.docType, decision: "verified", validUntil: cfg.hasExpiry ? validUntil : undefined });
@@ -89,18 +109,20 @@ export function ReviewDetail({ item, onBack }: { item: ReviewItem; onBack: () =>
         return;
       }
       toast.success(cfg.deleteOriginalOnVerify ? "확인했어요. 원본 사진은 삭제했어요" : "확인했어요");
-      onBack();
+      done();
     } finally {
+      running.current = false;
       setBusy(false);
     }
   };
 
   const reject = async () => {
-    if (busy) return;
+    if (busy || running.current) return;
     if (!reason.trim()) {
       toast.error("반려 사유를 입력해 주세요");
       return;
     }
+    running.current = true;
     setBusy(true);
     try {
       const res = await reviewDocument({ docId: item.id, docType: item.docType, decision: "rejected", reason: reason.trim() });
@@ -115,14 +137,16 @@ export function ReviewDetail({ item, onBack }: { item: ReviewItem; onBack: () =>
         return;
       }
       toast.success(cfg.deleteOriginalOnVerify ? "반려했어요. 원본 사진은 삭제했어요" : "반려했어요");
-      onBack();
+      done();
     } finally {
+      running.current = false;
       setBusy(false);
     }
   };
 
   const retryPurge = async () => {
-    if (busy) return;
+    if (busy || running.current) return;
+    running.current = true;
     setBusy(true);
     try {
       const res = await purgeOriginal(item.id);
@@ -131,8 +155,9 @@ export function ReviewDetail({ item, onBack }: { item: ReviewItem; onBack: () =>
         return;
       }
       toast.success("원본 사진을 삭제했어요");
-      onBack();
+      done();
     } finally {
+      running.current = false;
       setBusy(false);
     }
   };
@@ -160,11 +185,11 @@ export function ReviewDetail({ item, onBack }: { item: ReviewItem; onBack: () =>
   } else if (!detail) {
     body = <p className="text-sm text-muted">불러오는 중…</p>;
   } else if (detail.state === "gone") {
-    body = <Notice title="서류가 없어요" desc="삭제된 서류예요." onBack={onBack} />;
+    body = <Notice title="서류가 없어요" desc="삭제된 서류예요." onBack={back} />;
   } else if (detail.state === "processed") {
-    body = <Notice title="이미 처리된 서류예요" desc="다른 관리자가 먼저 확인했거나 반려했어요." onBack={onBack} />;
+    body = <Notice title="이미 처리된 서류예요" desc="다른 관리자가 먼저 확인했거나 반려했어요." onBack={back} />;
   } else if (detail.state === "superseded") {
-    body = <Notice title="새 서류로 바뀌었어요" desc="이 사람이 같은 서류를 다시 올렸어요. 목록에서 새로 올린 서류를 확인해 주세요." onBack={onBack} />;
+    body = <Notice title="새 서류로 바뀌었어요" desc="이 사람이 같은 서류를 다시 올렸어요. 목록에서 새로 올린 서류를 확인해 주세요." onBack={back} />;
   } else {
     const { doc, imageUrl, fileMissing } = detail;
     const metaRows = META_LABELS.filter((m) => doc.meta[m.key]);
@@ -282,7 +307,7 @@ export function ReviewDetail({ item, onBack }: { item: ReviewItem; onBack: () =>
 
   return (
     <div className="space-y-4">
-      <button type="button" onClick={onBack} className="-ml-1 flex items-center gap-1 text-sm font-semibold text-muted">
+      <button type="button" onClick={back} className="-ml-1 flex min-h-11 items-center gap-1 text-sm font-semibold text-muted">
         <ChevronLeft className="size-5" />
         목록
       </button>

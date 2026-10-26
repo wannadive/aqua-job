@@ -1,3 +1,4 @@
+import { CERT_LEVELS, CERT_ORG_OPTIONS, type CertOrg } from "./config.ts";
 import type { InstructorProfile, ResumeStep, Records } from "./types.ts";
 
 export const RESUME_STEPS: ResumeStep[] = [
@@ -68,4 +69,63 @@ export function resumeCompleteness(p: InstructorProfile): { done: number; total:
     total: checks.length,
     missing: checks.filter(([, ok]) => !ok).map(([label]) => label),
   };
+}
+
+// ---- 자격 단체·등급 (목록은 config.ts CERT_LEVELS 한 곳)
+
+/** 서버 필터와 같은 비교(lower(btrim())) */
+const certKey = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
+
+/** 저장된 단체 글자 → 목록의 단체(대소문자·앞뒤 공백 무시). 목록에 없으면 null */
+export function canonicalCertOrg(org: string | null | undefined): CertOrg | null {
+  const k = certKey(org);
+  if (!k) return null;
+  return CERT_ORG_OPTIONS.find((o) => o.toLowerCase() === k) ?? null;
+}
+
+/** 이 단체에서 고를 수 있는 등급 목록("기타"·목록에 없는 단체는 빈 목록 = 직접 입력) */
+export function certLevelOptions(org: string | null | undefined): readonly string[] {
+  const o = canonicalCertOrg(org);
+  return o ? CERT_LEVELS[o] : [];
+}
+
+/**
+ * 저장된 등급을 화면 칸으로: 비었음 / 목록의 등급(서버 비교와 같은 기준으로 맞춘 목록 글자) / 직접 입력(적힌 글자 그대로).
+ * 예전에 직접 적은 값이 목록에 없으면 "기타(직접 입력)"에 글자를 그대로 둔다.
+ */
+export type CertLevelChoice = { kind: "none" } | { kind: "list"; value: string } | { kind: "other"; text: string };
+export function certLevelChoice(org: string | null | undefined, level: string | null | undefined): CertLevelChoice {
+  const k = certKey(level);
+  if (!k) return { kind: "none" };
+  const hit = certLevelOptions(org).find((l) => l.toLowerCase() === k);
+  return hit ? { kind: "list", value: hit } : { kind: "other", text: level ?? "" };
+}
+
+/** 자격 한 줄 표시. 등급이 단체 이름으로 시작하면(AIDA2) 단체를 두 번 쓰지 않고, 기타 단체는 적은 글자만 */
+export function formatCert(c: { org: string; level: string }): string {
+  const org = c.org.trim();
+  const level = c.level.trim();
+  // "기타" 단체는 적은 등급(단체 이름 포함)만 보인다
+  if (org === "기타") return level || org;
+  if (org && level.toLowerCase().startsWith(org.toLowerCase())) return level;
+  return [org, level].filter(Boolean).join(" ");
+}
+
+/**
+ * 등급 칸이 직접 입력 모드인가. 한 번 직접 입력 모드에 들어간 줄(otherOpen)은 적은 글자가 목록 값과 같아지거나
+ * 비어도 입력 칸을 유지한다(입력 중 칸이 사라져 폰 키보드가 닫히지 않게). 목록이 없는 단체는 늘 직접 입력.
+ */
+export function isCertLevelTyping(org: string | null | undefined, level: string | null | undefined, otherOpen: boolean): boolean {
+  return certLevelOptions(org).length === 0 || otherOpen || certLevelChoice(org, level).kind === "other";
+}
+
+/**
+ * 단체를 고른 뒤의 등급. 단체가 비어 있던 예전 줄은 적어 둔 등급을 지우지 않는다(목록 값이면 그 칸, 아니면 직접 입력 칸에).
+ * 이미 단체가 있던 줄에서 다른 단체로 바꾸면 등급은 새로 고른다.
+ */
+export function levelAfterOrgPick(prevOrg: string | null | undefined, level: string, nextOrg: string): { level: string; otherOpen: boolean } {
+  if (!(prevOrg ?? "").trim() && level.trim()) {
+    return { level, otherOpen: certLevelChoice(nextOrg, level).kind === "other" };
+  }
+  return { level: "", otherOpen: false };
 }

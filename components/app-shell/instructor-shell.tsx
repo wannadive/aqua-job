@@ -24,6 +24,7 @@ import type { JobSummary } from "@/lib/jobs/types";
 import { ResumeEditor } from "@/components/talent-profile/resume-editor";
 import { ReceivedOffers } from "@/components/offers/received-offers";
 import { useReceivedOffers } from "@/components/offers/use-offers";
+import { closeOverlays, confirmLeaveAll, leaveToRoot } from "@/lib/navigation/use-navigable";
 
 type Tab = "home" | "jobs" | "offers" | "applications" | "resume";
 
@@ -198,7 +199,10 @@ function HomeTab({
 
       <PushSettingsCard />
 
-      <button type="button" onClick={() => void logout()} className="w-full py-3 text-center text-sm font-medium text-muted">
+      <button type="button" onClick={() => {
+        // 작성 중인 내용이 있으면 먼저 묻는다
+        if (confirmLeaveAll()) void logout();
+      }} className="w-full py-3 text-center text-sm font-medium text-muted">
         로그아웃
       </button>
     </div>
@@ -221,6 +225,22 @@ export function InstructorShell({ nav = null, onNavConsumed }: { nav?: Instructo
   const latestNavRef = useRef(0);
   const tabRef = useRef<Tab>("home");
   const [focusJob, setFocusJob] = useState<FocusRequest | null>(null);
+
+  /**
+   * 탭 이동(아래 탭·홈의 바로가기·다른 화면에서 탭으로): 작성 중이면 묻고, 덮는 화면·팝업을 모두 닫은 뒤 바꾼다.
+   * before: 탭을 바꾸기 직전에 할 일(열 공고 등)
+   */
+  const goTab = (key: Tab, before?: () => void) => {
+    // 같은 탭: 바닥이면 아무것도 안 함, 덮는 화면·팝업이 있으면 그것만 닫는다(바닥 화면의 입력은 묻지도 놓지도 않음)
+    if (key === tab) {
+      closeOverlays(before);
+      return;
+    }
+    leaveToRoot(() => {
+      before?.();
+      setTab(key);
+    });
+  };
 
   // 알림 → 탭 이동 + 해당 항목. 이동한 화면의 데이터만 다시 불러온다(알림은 화면을 연 뒤에 왔을 수 있다).
   useEffect(() => {
@@ -273,7 +293,7 @@ export function InstructorShell({ nav = null, onNavConsumed }: { nav?: Instructo
     const offer = rec.offers.find((o) => o.jobId === job.id && (o.status === "offered" || o.status === "accepted"));
     if (offer) {
       toast(offer.status === "offered" ? "이 공고로 받은 제안이 있어요. 받은 제안에서 답해 주세요" : "이 공고는 이미 제안을 수락했어요");
-      setTab("offers");
+      goTab("offers");
       return;
     }
     setApplying(job);
@@ -283,13 +303,13 @@ export function InstructorShell({ nav = null, onNavConsumed }: { nav?: Instructo
       <main className="px-5 pb-28 pt-8">
         {tab === "home" && (
           <HomeTab
-            onResume={() => setTab("resume")}
+            onResume={() => goTab("resume")}
             counts={counts}
             countsError={my.error && !my.loading}
             onRetryCounts={() => void my.reload()}
-            onApplications={() => setTab("applications")}
+            onApplications={() => goTab("applications")}
             pendingOffers={pendingOffers}
-            onOffers={() => setTab("offers")}
+            onOffers={() => goTab("offers")}
           />
         )}
         {tab === "jobs" && <JobsBrowser key={openJobId ?? "list"} initialJobId={openJobId} onApply={startApply} reloadKey={reloadKey} />}
@@ -299,10 +319,7 @@ export function InstructorShell({ nav = null, onNavConsumed }: { nav?: Instructo
             loading={rec.loading}
             error={rec.error && !rec.loading}
             onRetry={() => void rec.reload()}
-            onOpenJob={(id) => {
-              setOpenJobId(id);
-              setTab("jobs");
-            }}
+            onOpenJob={(id) => goTab("jobs", () => setOpenJobId(id))}
             onChanged={rec.reload}
             focus={focusOffer}
           />
@@ -313,10 +330,7 @@ export function InstructorShell({ nav = null, onNavConsumed }: { nav?: Instructo
             loading={my.loading}
             error={my.error}
             onRetry={() => void my.reload()}
-            onOpenJob={(id) => {
-              setOpenJobId(id);
-              setTab("jobs");
-            }}
+            onOpenJob={(id) => goTab("jobs", () => setOpenJobId(id))}
             onChanged={my.reload}
             acceptedOffers={acceptedOffers}
             focusJob={focusJob}
@@ -336,10 +350,7 @@ export function InstructorShell({ nav = null, onNavConsumed }: { nav?: Instructo
           setReloadKey((n) => n + 1);
           await my.reload();
         }}
-        onOpenResume={() => {
-          setApplying(null);
-          setTab("resume");
-        }}
+        onOpenResume={() => goTab("resume")}
       />
       <nav className="fixed inset-x-0 bottom-0 z-10 border-t border-line bg-white pb-[env(safe-area-inset-bottom)]">
         <ul className="mx-auto flex max-w-md">
@@ -347,10 +358,7 @@ export function InstructorShell({ nav = null, onNavConsumed }: { nav?: Instructo
             <li key={key} className="flex-1">
               <button
                 type="button"
-                onClick={() => {
-                  if (key === "jobs") setOpenJobId(null);
-                  setTab(key);
-                }}
+                onClick={() => goTab(key, () => key === "jobs" && setOpenJobId(null))}
                 aria-current={tab === key ? "page" : undefined}
                 className={`flex w-full flex-col items-center gap-1 py-2.5 text-[11px] font-semibold ${tab === key ? "text-ink" : "text-muted"}`}
               >

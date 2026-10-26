@@ -7,12 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { JobSummary } from "@/lib/jobs/types";
 import { browseInstructors } from "@/lib/offers/api";
-import { BROWSE_PAGE_SIZE, EMPTY_INSTRUCTOR_FILTERS, buildBrowseFilters } from "@/lib/offers/logic";
+import { BROWSE_PAGE_SIZE, EMPTY_INSTRUCTOR_FILTERS, buildBrowseFilters, offerLoadState } from "@/lib/offers/logic";
 import type { BrowseInstructor, InstructorFilterState, Offer } from "@/lib/offers/types";
 import { CERT_ORG_OPTIONS, DAY_OPTIONS, REGION_OPTIONS, SCOPE_OPTIONS } from "@/lib/talent-profile/config";
+import { certLevelOptions } from "@/lib/talent-profile/logic";
 import { InstructorCard } from "./instructor-card";
 import { OfferComposer } from "./offer-composer";
 import { SentOffers } from "./sent-offers";
+import { useNavigableValue } from "@/lib/navigation/use-navigable";
 
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -32,6 +34,7 @@ const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x
 function FilterPanel({ value, onApply }: { value: InstructorFilterState; onApply: (v: InstructorFilterState) => void }) {
   const [d, setD] = useState<InstructorFilterState>(value);
   useEffect(() => setD(value), [value]);
+  const levelOptions = certLevelOptions(d.org);
   return (
     <section className="space-y-4 rounded-card bg-white p-5 shadow-sm">
       <div>
@@ -46,12 +49,13 @@ function FilterPanel({ value, onApply }: { value: InstructorFilterState; onApply
       </div>
       <div>
         <p className="text-sm font-semibold text-ink">자격 단체·등급</p>
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 grid grid-cols-2 gap-2">
           <select
             aria-label="자격 단체"
             value={d.org ?? ""}
-            onChange={(e) => setD({ ...d, org: e.target.value || null })}
-            className="h-11 rounded-xl border border-line bg-white px-3 text-sm text-ink"
+            // 단체를 바꾸면 등급은 새로 고른다(다른 단체의 등급이 남지 않게)
+            onChange={(e) => setD({ ...d, org: e.target.value || null, level: "" })}
+            className="h-11 min-w-0 rounded-xl border border-line bg-white px-3 text-sm text-ink"
           >
             <option value="">전체 단체</option>
             {CERT_ORG_OPTIONS.map((o) => (
@@ -60,16 +64,33 @@ function FilterPanel({ value, onApply }: { value: InstructorFilterState; onApply
               </option>
             ))}
           </select>
-          <Input
-            aria-label="등급"
-            value={d.level}
-            maxLength={30}
-            onChange={(e) => setD({ ...d, level: e.target.value })}
-            placeholder="등급(예: 강사)"
-            className="h-11 text-base"
-          />
+          {levelOptions.length > 0 || !d.org ? (
+            <select
+              aria-label="등급"
+              value={d.level}
+              disabled={!d.org}
+              onChange={(e) => setD({ ...d, level: e.target.value })}
+              className="h-11 min-w-0 rounded-xl border border-line bg-white px-3 text-sm text-ink disabled:opacity-50"
+            >
+              <option value="">{d.org ? "전체 등급" : "단체를 먼저 골라 주세요"}</option>
+              {levelOptions.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <Input
+              aria-label="등급"
+              value={d.level}
+              maxLength={40}
+              onChange={(e) => setD({ ...d, level: e.target.value })}
+              placeholder="등급(직접 입력)"
+              className="h-11 text-base"
+            />
+          )}
         </div>
-        <p className="mt-1 text-xs text-muted">등급은 강사가 적은 글자와 똑같을 때만 찾아요</p>
+        {d.org && levelOptions.length === 0 && <p className="mt-1 text-xs text-muted">직접 적은 등급은 강사가 적은 글자와 똑같을 때만 찾아요</p>}
       </div>
       <div>
         <p className="text-sm font-semibold text-ink">활동 범위</p>
@@ -157,7 +178,8 @@ export function InstructorFinder({
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const seq = useRef(0);
-  const [resumeOf, setResumeOf] = useState<{ id: string; name: string } | null>(null);
+  // 강사 이력서(덮는 화면): 방문 기록 한 칸 — 폰 뒤로가기·[뒤로]가 같은 길로 닫는다
+  const [resumeOf, setResumeOf] = useNavigableValue<{ id: string; name: string }>("v_talent");
   const [composing, setComposing] = useState<{ id: string; name: string } | null>(null);
 
   // 첫 쪽: 필터가 바뀌거나 다시 시도하면 처음부터
@@ -220,7 +242,7 @@ export function InstructorFinder({
       instructor={composing}
       jobs={jobs}
       offers={offers}
-      offersUnavailable={offerBlocked}
+      loadState={offerLoadState({ jobsLoading, jobsError, offersLoading, offersError })}
       onRetryOffers={() => void (jobsError ? onRetryJobs() : reloadOffers())}
       onClose={() => setComposing(null)}
       onSent={reloadOffers}

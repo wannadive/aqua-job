@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,8 @@ import { fetchMyContacts, fetchMyInstructorProfile, saveInstructorProfile, saveM
 import { RESUME_STEPS } from "@/lib/talent-profile/logic";
 import type { PrivateContacts } from "@/lib/talent-profile/types";
 import { StepInput, type Draft } from "./resume-fields";
+import { isDirty } from "@/lib/navigation/dirty";
+import { useLeaveGuard } from "@/lib/navigation/use-navigable";
 
 type StepKey = (typeof RESUME_STEPS)[number]["key"];
 
@@ -33,8 +35,17 @@ export function ResumeEditor() {
   const [draft, setDraftState] = useState<Draft | null>(null);
   const [contacts, setContacts] = useState<PrivateContacts>({ phone: "", email: "" });
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [loadError, setLoadError] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // 작성 중 판정의 처음 값: 불러온 값, 저장하면 저장한 값(이력서·연락처 따로)
+  const [savedDraft, setSavedDraft] = useState<Draft | null>(null);
+  const [savedContacts, setSavedContacts] = useState<PrivateContacts>({ phone: "", email: "" });
+  // 작성 중이면 탭 이동·역할 전환·알림 이동·폰 뒤로가기(앱 밖으로)·새로 고침 전에 묻는다
+  useLeaveGuard(
+    draft !== null && savedDraft !== null && (isDirty(savedDraft, draft) || isDirty(savedContacts, contacts)),
+    { anchor: "mount", busy: saving },
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -44,6 +55,8 @@ export function ResumeEditor() {
         if (cancelled) return;
         setDraftState(p ?? {});
         setContacts(c);
+        setSavedDraft(p ?? {});
+        setSavedContacts(c);
       })
       .catch(() => {
         if (!cancelled) {
@@ -70,10 +83,14 @@ export function ResumeEditor() {
   const setDraft = (p: Draft) => setDraftState((d) => ({ ...d, ...p }));
 
   const save = async () => {
-    if (saving || !draft) return;
+    if (savingRef.current || !draft) return;
+    savingRef.current = true;
     setSaving(true);
+    // 보낸 값(저장하는 동안 더 고친 것은 다시 작성 중으로 남는다)
+    const sentDraft = draft;
+    const sentContacts = contacts;
     try {
-      const { userId: _userId, onboardingDone: _o, ...patch } = draft;
+      const { userId: _userId, onboardingDone: _o, ...patch } = sentDraft;
       void _userId;
       void _o;
       const res = await saveInstructorProfile(patch);
@@ -81,13 +98,16 @@ export function ResumeEditor() {
         toast.error(res.error);
         return;
       }
-      const cres = await saveMyContacts(contacts);
+      setSavedDraft(sentDraft);
+      const cres = await saveMyContacts(sentContacts);
       if (cres.error) {
         toast.error(cres.error);
         return;
       }
+      setSavedContacts(sentContacts);
       toast.success("이력서를 저장했어요");
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };

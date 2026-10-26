@@ -7,7 +7,7 @@ import { avatarUrl } from "@/lib/avatar/api";
 import { getPublicFacts } from "@/lib/jobs/api";
 import { fetchTalentProfile } from "@/lib/talent-profile/api";
 import { SCOPE_OPTIONS } from "@/lib/talent-profile/config";
-import { formatRecords } from "@/lib/talent-profile/logic";
+import { formatCert, formatRecords } from "@/lib/talent-profile/logic";
 import type { InstructorProfile } from "@/lib/talent-profile/types";
 import { DOC_TYPES } from "@/lib/verification/config";
 import { publicFacts, type PublicFact } from "@/lib/verification/effective";
@@ -120,7 +120,7 @@ export function ApplicantResume({
   const photo = avatarUrl(profile.photoPath);
   const scopes = profile.scopes.map((s) => SCOPE_OPTIONS.find((o) => o.value === s)?.label ?? s);
   const records = formatRecords(profile.records);
-  const certs = profile.certifications.filter((c) => c.org || c.level).map((c) => [c.org, c.level].filter(Boolean).join(" "));
+  const certs = profile.certifications.filter((c) => c.org || c.level).map(formatCert);
   const basics = [profile.gender, profile.ageBand].filter(Boolean).join(" · ");
   const has = (v: unknown) => (Array.isArray(v) ? v.length > 0 : v != null && v !== "");
   const showBasic =

@@ -19,6 +19,8 @@ import { CenterProfileForm } from "@/components/center-listing/center-profile-fo
 import { InstructorFinder } from "@/components/offers/instructor-finder";
 import { useSentOffers } from "@/components/offers/use-offers";
 import { filledCount } from "@/lib/offers/logic";
+import { closeOverlays, confirmLeaveAll, leaveToRoot, useNavigableValue } from "@/lib/navigation/use-navigable";
+import { JOB_FORM_PARAM } from "@/components/jobs/job-form";
 
 type Tab = "home" | "jobs" | "applicants" | "instructors" | "settings";
 
@@ -144,7 +146,10 @@ function HomeTab({
         </div>
       </section>
 
-      <button type="button" onClick={() => void logout()} className="w-full py-3 text-center text-sm font-medium text-muted">
+      <button type="button" onClick={() => {
+        // 작성 중인 내용이 있으면 먼저 묻는다
+        if (confirmLeaveAll()) void logout();
+      }} className="w-full py-3 text-center text-sm font-medium text-muted">
         로그아웃
       </button>
     </div>
@@ -162,21 +167,13 @@ function SettingsTab() {
   );
 }
 
-type Overlay = { kind: "new" } | { kind: "edit"; jobId: string } | null;
+type Overlay = { kind: "new" } | { kind: "edit"; jobId: string };
 
-export function CenterShell({
-  nav = null,
-  onNavConsumed,
-  onFullScreenFormChange,
-}: {
-  nav?: CenterNav | null;
-  onNavConsumed?: () => void;
-  /** 공고 작성·수정 화면이 열리고 닫힐 때 */
-  onFullScreenFormChange?: (open: boolean) => void;
-} = {}) {
+export function CenterShell({ nav = null, onNavConsumed }: { nav?: CenterNav | null; onNavConsumed?: () => void } = {}) {
   const { user } = useAuth();
   const [tab, setTab] = useState<Tab>("home");
-  const [overlay, setOverlay] = useState<Overlay>(null);
+  // 공고 작성·수정 화면(덮는 화면): 방문 기록 한 칸 — 폰 뒤로가기·[뒤로]가 이 화면만 닫는다(작성 중이면 묻는다)
+  const [overlay, setOverlay] = useNavigableValue<Overlay>(JOB_FORM_PARAM);
   // 지원자 탭의 공고 필터(null = 전체). 공고 카드 [지원자 보기]는 그 공고로 연다.
   const [applicantJob, setApplicantJob] = useState<string | null>(null);
   const changeApplicantJob = useCallback((id: string | null) => setApplicantJob(id), []);
@@ -201,14 +198,23 @@ export function CenterShell({
   const mountedRef = useRef(false);
   const latestNavRef = useRef(0);
   const tabRef = useRef<Tab>("home");
-  const fullScreenCb = useRef(onFullScreenFormChange);
-  fullScreenCb.current = onFullScreenFormChange;
 
-  // 화면 전체 입력 폼(공고 작성·수정)이 열렸는지 셸 라우터에 알린다(열려 있으면 종을 숨김)
-  useEffect(() => {
-    fullScreenCb.current?.(overlay !== null);
-  }, [overlay]);
-  useEffect(() => () => fullScreenCb.current?.(false), []);
+  /**
+   * 탭 이동(아래 탭·홈의 바로가기·다른 화면에서 탭으로): 작성 중이면 묻고, 덮는 화면·팝업을 모두 닫은 뒤 바꾼다.
+   * before: 탭을 바꾸기 직전에 할 일(지원자 필터 등)
+   */
+  const goTab = (key: Tab, before?: () => void) => {
+    // 같은 탭: 바닥이면 아무것도 안 함, 덮는 화면이 있으면 그것만 닫는다(바닥 화면의 입력은 묻지도 놓지도 않음)
+    if (key === tab) {
+      closeOverlays(before);
+      return;
+    }
+    leaveToRoot(() => {
+      setOverlay(null); // 공고 작성 화면이 남지 않게(기록은 이미 바닥 — 주소에 키가 없으면 화면만 맞춘다)
+      before?.();
+      setTab(key);
+    });
+  };
 
   // 알림 → 탭 이동 + 해당 항목. 이동한 화면의 데이터만 다시 불러온다.
   useEffect(() => {
@@ -219,7 +225,7 @@ export function CenterShell({
     const target = nav.tab;
     latestNavRef.current = seq;
     tabRef.current = target;
-    setOverlay(null); // 종은 입력 폼이 열려 있을 때 숨겨지므로 여기 올 때 폼은 없다(안전장치)
+    setOverlay(null); // 알림 이동은 덮는 화면을 모두 닫고 오므로 보통 이미 닫혀 있다(안전장치)
     setFocusApp(null);
     setFocusJob(null);
     // 앱을 연 채 알림을 누르면 지금 목록이 낡았을 수 있다(새 지원, 숨김으로 진행중→마감).
@@ -267,10 +273,7 @@ export function CenterShell({
             onClose={() => setOverlay(null)}
             onSaved={my.reload}
             selectedCount={editJob ? filledCount(editJob) : 0}
-            onSubmitDocs={() => {
-              setOverlay(null);
-              setTab("settings");
-            }}
+            onSubmitDocs={() => goTab("settings")}
           />
         </main>
       </div>
@@ -282,9 +285,9 @@ export function CenterShell({
       <main className="px-5 pb-28 pt-8">
         {tab === "home" && (
           <HomeTab
-            onSubmitDocs={() => setTab("settings")}
+            onSubmitDocs={() => goTab("settings")}
             onNewJob={() => setOverlay({ kind: "new" })}
-            onFindInstructors={() => setTab("instructors")}
+            onFindInstructors={() => goTab("instructors")}
             stats={stats}
           />
         )}
@@ -297,10 +300,7 @@ export function CenterShell({
             onRetry={() => void my.reload()}
             onNew={() => setOverlay({ kind: "new" })}
             onEdit={(j) => setOverlay({ kind: "edit", jobId: j.id })}
-            onApplicants={(j) => {
-              setApplicantJob(j.id);
-              setTab("applicants");
-            }}
+            onApplicants={(j) => goTab("applicants", () => setApplicantJob(j.id))}
             onChanged={my.reload}
             focusJob={focusJob}
           />
@@ -336,10 +336,7 @@ export function CenterShell({
             reloadJobs={reloadJobs}
             onNewJob={() => setOverlay({ kind: "new" })}
             viewerId={user?.accountStatus === "active" ? user.id : null}
-            onApplicants={(jobId) => {
-              setApplicantJob(jobId);
-              setTab("applicants");
-            }}
+            onApplicants={(jobId) => goTab("applicants", () => setApplicantJob(jobId))}
           />
         )}
         {tab === "settings" && <SettingsTab />}
@@ -350,10 +347,7 @@ export function CenterShell({
             <li key={key} className="flex-1">
               <button
                 type="button"
-                onClick={() => {
-                  if (key === "applicants") setApplicantJob(null);
-                  setTab(key);
-                }}
+                onClick={() => goTab(key, () => key === "applicants" && setApplicantJob(null))}
                 aria-current={tab === key ? "page" : undefined}
                 className={`flex w-full flex-col items-center gap-1 py-2.5 text-[11px] font-semibold ${tab === key ? "text-ink" : "text-muted"}`}
               >

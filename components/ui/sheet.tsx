@@ -6,8 +6,13 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
+import { useBackToClose } from '@/lib/navigation/use-navigable'
 
-const Sheet = SheetPrimitive.Root
+// 열려 있으면 폰 뒤로가기 = 이 팝업만 닫기 (방문 기록 한 칸, lib/navigation/use-navigable useBackToClose)
+function Sheet({ open, onOpenChange, ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
+  useBackToClose(open, onOpenChange)
+  return <SheetPrimitive.Root open={open} onOpenChange={onOpenChange} {...props} />
+}
 
 const SheetTrigger = SheetPrimitive.Trigger
 

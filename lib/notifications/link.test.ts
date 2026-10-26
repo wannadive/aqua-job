@@ -156,3 +156,12 @@ test("resolveTarget: 역할이 없거나 온보딩 전이면 이동하지 않는
     kind: "needs-onboarding",
   });
 });
+
+test("launchLinkFor: 그때 계정과 지금 계정이 같을 때만 링크", async () => {
+  const { launchLinkFor } = await import("./link.ts");
+  const l = { userId: "a", link: "/?tab=offers" };
+  assert.equal(launchLinkFor(l, "a"), "/?tab=offers");
+  assert.equal(launchLinkFor(l, "b"), null);
+  assert.equal(launchLinkFor(l, null), null);
+  assert.equal(launchLinkFor(null, "a"), null);
+});

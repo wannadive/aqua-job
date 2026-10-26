@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { fetchPendingPurges, fetchReviewQueue, purgeOriginal, type PendingPurge, type ReviewItem } from "@/lib/verification/admin-api";
 import { DOC_TYPES } from "@/lib/verification/config";
 import { kstDate, ROLE_LABEL } from "@/lib/verification/admin-logic";
-import { ReviewDetail } from "./review-detail";
+import { REVIEW_DETAIL_PARAM, ReviewDetail } from "./review-detail";
+import { useNavigableValue } from "@/lib/navigation/use-navigable";
 
 /**
  * 원본(신분증) 사진이 아직 남아 있는 서류: 확인·반려 뒤 삭제가 실패했거나, 같은 사람이 새로 올려 밀려난 건.
@@ -94,7 +95,8 @@ export function ReviewQueue() {
   const [items, setItems] = useState<ReviewItem[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const [selected, setSelected] = useState<ReviewItem | null>(null);
+  // 서류 상세(덮는 화면): 방문 기록 한 칸 — 폰 뒤로가기·[목록]이 같은 길로 닫는다
+  const [selected, setSelected] = useNavigableValue<ReviewItem>(REVIEW_DETAIL_PARAM);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,16 +116,18 @@ export function ReviewQueue() {
 
   const reload = () => setAttempt((n) => n + 1);
 
+  // 상세가 닫히면(버튼이든 폰 뒤로가기든) 목록을 새로 불러온다
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (selected) wasOpen.current = true;
+    else if (wasOpen.current) {
+      wasOpen.current = false;
+      setAttempt((n) => n + 1);
+    }
+  }, [selected]);
+
   if (selected) {
-    return (
-      <ReviewDetail
-        item={selected}
-        onBack={() => {
-          setSelected(null);
-          reload();
-        }}
-      />
-    );
+    return <ReviewDetail key={selected.id} item={selected} onBack={() => setSelected(null)} />;
   }
 
   return (

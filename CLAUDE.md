@@ -28,6 +28,7 @@ components/
 lib/
   app-shell/    셸: auth-provider.tsx(useAuth), account/, intro/
   jobs/ verification/ talent-profile/ center-listing/ avatar/ notifications/ offers/ moderation/   도메인 모듈 (types·logic·api·mappers)
+  navigation/   화면 이동·뒤로가기·작성 중 보호(공용): history-core.ts(순수), use-navigable.ts(훅), dirty.ts
   supabase/     client.ts, admin.ts, database.types.ts, keep-login.ts (공용, 위치 유지)
   brand.ts      브랜드 값(이름·태그라인)은 여기서만 읽기
   image.ts      이미지 압축 (compressImage)
@@ -66,6 +67,15 @@ docs/           설계·계획·기능 명세, FINFRIENDS_INTEGRATION.md
 - `profiles.roles text[]`(가진 역할 전부) + `profiles.role`(대표·가입 역할, 항상 roles 안). 일반 가입은 역할 하나, 여러 역할은 관리자가 SQL로 준다(`supabase/migrations/20261022_003_multi_role.sql` 맨 아래). roles는 관리자·서버만 바꾼다(트리거). role만 바꾸면 roles 안의 예전 역할이 새 역할로 바뀐다(더해지지 않음) — 여러 역할을 줄 땐 roles를 직접 적는다.
 - 권한 확인은 role이 아니라 roles로: SQL은 `admin = any(roles)`(`is_admin()`) / `roles && array[...]`, 앱은 `user.roles.includes(...)`. 서류 종류 구분은 가입 역할이 아니라 `DOC_TYPES[docType].owner`.
 - 보고 있는 역할 화면은 `useAuth().activeRole`(localStorage `aqua.activeRole`, `resolveActiveRole`로 검증, 기본은 관리자 → 가입 역할). 라우팅은 `routeFor(user, introSeen, activeRole)`, 역할이 둘 이상이면 상단 `RoleTabs`.
+
+### 화면 이동·뒤로가기 · 작성 중 보호 (결제 전 수정 A1·A2, 워너다이브 hooks/use-navigable 이식)
+- 화면 위에 덮는 화면(상세·이력서 보기·입력 화면·하위 단계)은 `useState` 대신 `lib/navigation/use-navigable`의 `useNavigableValue`/`useNavigableView`/`useNavigable` — 방문 기록에 올라가 폰 뒤로가기(왼쪽 밀기)가 그 화면만 닫는다. 닫기 버튼은 `closeNavigable(키)`(그 키가 열린 칸까지 한 번에), 한 칸 뒤로는 `goBackInApp`. 주소 키는 `v_`로 시작하고 값(id 등)은 주소에 넣지 않는다(열림 표시만, 새로 고침하면 지운다).
+- 팝업(`components/ui`의 Dialog·Sheet, open/onOpenChange)은 자동으로 기록 한 칸(`useBackToClose`). 직접 만든 팝업(`fixed inset-0`)은 덮는 화면 키로 만들거나 `useBackToClose`를 붙인다.
+- 아래 탭·위 역할 탭·알림(종·열린 앱에서 누른 푸시) 이동은 `leaveToRoot(then)` — 작성 중이면 묻고, 덮는 화면·팝업을 모두 닫은 뒤 바닥 화면에서 이동.
+- 입력 화면은 `useLeaveGuard(dirty, { param | anchor })` — dirty = 처음 값과 다름(`lib/navigation/dirty` `isDirty`, 여는 것만으로는 아님). 닫기·취소·바깥 누름은 `confirmLeave()` 뒤에, 저장 성공 뒤엔 `release()` 후 닫는다(묻지 않음). 확인 문구는 `LEAVE_TEXT`("작성 중인 내용이 사라져요. 나갈까요?"). 폰 뒤로가기는 기록을 되돌린 뒤 묻고, 새로 고침·탭 닫기는 `beforeunload`(iOS Safari는 미지원).
+- 푸시를 누를 때 앱 창이 열려 있으면 `public/sw.js`가 `postMessage`(`lib/notifications/sw-message.ts`의 이름과 같음)로 링크를 보내고, 앱은 `readSwOpenLink`(같은 출처·정확한 모양·알림 링크 해석기 통과)로 검사해 종과 같은 길로 이동한다. 앱이 1.5초 안에 답하지 않으면 예전처럼 창 주소를 바꾼다.
+- 위 막대(역할 탭 + 종)는 `app-router`의 sticky header(안전 영역 포함). 작성 화면에서도 종을 숨기지 않는다(이동 때 확인).
+- `lib/navigation`·`components/shared`는 셸·도메인을 import하지 않는다(`lib/boundaries.test.ts`).
 
 ### Mutation
 - DB mutation 호출에는 반드시 `await`를 붙인다. 없으면 에러가 삼켜지고 성공 toast만 뜬다.

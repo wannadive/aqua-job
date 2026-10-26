@@ -200,3 +200,18 @@ export const NAV_FAIL_TEXT = {
   "needs-onboarding": "이력서를 먼저 채우면 이 알림을 열 수 있어요",
   invalid: "열 수 없는 알림 주소예요",
 } as const;
+
+/** 푸시로 열린 링크(읽음 표시용) — 그때 로그인한 계정 id와 함께 둔다 */
+export interface LaunchLink {
+  userId: string;
+  link: string;
+}
+
+/**
+ * 이 계정에 읽음 처리할 푸시 링크. 다른 계정으로 바뀐 직후 앞 계정의 링크가 잠깐 남아 있어도
+ * 지금 계정(userId)과 같을 때만 돌려준다(아니면 null).
+ */
+export function launchLinkFor(launch: LaunchLink | null | undefined, userId: string | null | undefined): string | null {
+  if (!launch || !userId || launch.userId !== userId) return null;
+  return launch.link;
+}

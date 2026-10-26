@@ -20,6 +20,8 @@ const DOMAIN_DIRS = [
   "components/centers",
 ];
 const SHELL_DIRS = ["components/app-shell", "lib/app-shell"];
+// 공용 장치(화면 이동·뒤로가기·작성 중 보호, 공용 UI 조각): 셸도 도메인도 import하지 않는다 — 도메인·셸 모두가 쓰므로
+const SHARED_DIRS = ["lib/navigation", "components/shared"];
 
 function walk(dir: string, out: string[] = []): string[] {
   if (!existsSync(dir)) return out;
@@ -66,8 +68,25 @@ test("도메인 모듈은 app-shell을 import하지 않는다", () => {
   assert.deepEqual(violations, [], "도메인이 셸을 import함:\n" + violations.join("\n"));
 });
 
+test("공용 장치(lib/navigation · components/shared)는 셸·도메인을 import하지 않는다", () => {
+  const violations: string[] = [];
+  const isDomainPath = (p: string) => DOMAIN_DIRS.some((d) => p === d || p.startsWith(d + "/"));
+  for (const d of SHARED_DIRS) {
+    for (const file of walk(join(ROOT, d))) {
+      const src = readFileSync(file, "utf8");
+      for (const spec of importSpecs(src)) {
+        const target = toRepoPath(file, spec);
+        if (target && (isShellPath(target) || isDomainPath(target))) {
+          violations.push(`${relative(ROOT, file).split(sep).join("/")} -> ${spec}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(violations, [], "공용 장치가 셸·도메인을 import함:\n" + violations.join("\n"));
+});
+
 test("경계 검사 대상 폴더가 실제로 존재한다 (폴더 이름이 바뀌면 검사가 헛돌지 않게)", () => {
-  for (const d of [...DOMAIN_DIRS, ...SHELL_DIRS]) {
+  for (const d of [...DOMAIN_DIRS, ...SHELL_DIRS, ...SHARED_DIRS]) {
     assert.ok(existsSync(join(ROOT, d)), `${d} 없음 — boundaries.test.ts 목록을 갱신하세요`);
   }
 });

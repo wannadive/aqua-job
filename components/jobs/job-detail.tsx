@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { avatarUrl } from "@/lib/avatar/api";
 import { fetchPaidMode, getJobSummary, getMyApplicationStatus, recordJobView, tryGetJobDetail } from "@/lib/jobs/api";
 import { jobDisclaimer } from "@/lib/jobs/config";
+import { closedNotice, isOwnJob } from "@/lib/jobs/logic";
 import type { ApplicationStatus, JobDetail as JobDetailData, JobSummary, JobViewer } from "@/lib/jobs/types";
 import { JobCard, JOB_STATUS_LABEL } from "./job-card";
 import { LockedField } from "./locked-field";
@@ -177,9 +178,13 @@ export function JobDetail({
   const lockAction = viewer.userId ? undefined : onSignup;
   const photos = (detail?.center.photoPaths ?? []).map((p) => avatarUrl(p)).filter((u): u is string => !!u);
   const open = summary.status === "open";
+  // 겸용 계정(센터+강사)이 자기 공고를 볼 때: [지원하기] 대신 "내 공고"(서버 apply_to_job도 막는다)
+  const mine = isOwnJob(summary, viewer.userId);
 
   let applyArea: React.ReactNode = null;
-  if (!viewer.userId) {
+  if (mine) {
+    applyArea = <p className="rounded-card bg-surface p-4 text-center text-sm font-semibold text-muted">내 공고예요</p>;
+  } else if (!viewer.userId) {
     if (open)
       applyArea = (
         <Button className="h-[52px] w-full bg-ink text-base text-white" onClick={onSignup}>
@@ -211,8 +216,8 @@ export function JobDetail({
         </button>
       </div>
 
-      <JobCard job={summary} showStatus dimmed={!open} />
-      {!open && <p className="text-sm text-muted">{JOB_STATUS_LABEL[summary.status]} 상태의 공고예요</p>}
+      <JobCard job={summary} showStatus dimmed={!open} mine={mine} />
+      {!open && <p className="text-sm text-muted">{closedNotice(summary.status) ?? `${JOB_STATUS_LABEL[summary.status]} 상태의 공고예요`}</p>}
 
       <button
         type="button"

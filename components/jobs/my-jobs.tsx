@@ -10,6 +10,7 @@ import { closeJob } from "@/lib/jobs/api";
 import { filledCount } from "@/lib/offers/logic";
 import type { JobSummary } from "@/lib/jobs/types";
 import { JobCard } from "./job-card";
+import { useLeaveGuard } from "@/lib/navigation/use-navigable";
 import type { ApplicantCounts } from "./use-my-jobs";
 
 export function MyJobs({
@@ -39,6 +40,8 @@ export function MyJobs({
   const [view, setView] = useState<"open" | "closed">("open");
   const [closing, setClosing] = useState<JobSummary | null>(null);
   const [busy, setBusy] = useState(false);
+  // 처리하는 중에는 확인 창을 닫는 폰 뒤로가기를 조용히 되돌린다(창과 기록 칸이 어긋나지 않게, 15초 상한) — 시트와 같은 장치
+  const guard = useLeaveGuard(false, { busy: busy && closing !== null });
 
   const highlight = useFocusItem(
     focusJob,
@@ -131,7 +134,7 @@ export function MyJobs({
         );
       })}
 
-      <Dialog open={closing !== null} onOpenChange={(v) => !busy && !v && setClosing(null)}>
+      <Dialog open={closing !== null} onOpenChange={(v) => !v && !guard.isSending() && setClosing(null)}>
         <DialogContent className="max-w-sm">
           <DialogTitle>공고를 마감할까요?</DialogTitle>
           <DialogDescription>마감하면 새 지원을 받을 수 없어요. 이미 받은 지원자는 그대로 볼 수 있어요.</DialogDescription>

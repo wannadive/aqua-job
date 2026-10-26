@@ -222,3 +222,28 @@ export function myApplicationCounts(rows: GroupInput[]): { active: number; total
   }
   return { active, total, selected };
 }
+
+/**
+ * 내 공고인가. ownerId는 서버가 공고 주인·관리자에게만 주고 그 밖에는 null(007)이라,
+ * 로그인한 내 id와 같을 때만 내 공고다(관리자가 남의 공고를 볼 때는 다른 id라 아님). 지원 막기는 서버가 따로 한다.
+ */
+export function isOwnJob(job: { ownerId: string | null }, viewerId: string | null | undefined): boolean {
+  return !!viewerId && job.ownerId !== null && job.ownerId === viewerId;
+}
+
+/**
+ * 공고가 마감됐을 때 안내 문구(유효 상태 = 마감 이유: full 인원 참 · expired 기간 지남 · closed 직접 마감).
+ * 진행중·숨김은 null. "인원이 다 차서"는 인원이 찼을 때만.
+ */
+export function closedNotice(status: JobStatus): string | null {
+  switch (status) {
+    case "full":
+      return "모집 인원이 다 차서 공고가 마감됐어요";
+    case "expired":
+      return "모집 기간이 지나 공고가 마감됐어요";
+    case "closed":
+      return "공고가 마감됐어요";
+    default:
+      return null;
+  }
+}

@@ -9,6 +9,8 @@ import { submitReport } from "@/lib/moderation/api";
 import { REPORT_DONE_TEXT, reportSheetTitle, violationInputError } from "@/lib/moderation/logic";
 import type { ReportTarget, ViolationReason } from "@/lib/moderation/types";
 import { ViolationFields } from "./violation-fields";
+import { isDirty } from "@/lib/navigation/dirty";
+import { useLeaveGuard } from "@/lib/navigation/use-navigable";
 
 /**
  * [신고하기] 버튼 + 신고 시트. 누가 보이게 할지는 부르는 쪽이 정한다(로그인한 활성 회원 · 내 것 아님).
@@ -37,7 +39,16 @@ export function ReportSheet({ target, onClose }: { target: ReportTarget | null; 
   const [formError, setFormError] = useState<string | null>(null);
   const submitting = useRef(false);
   const mounted = useRef(true);
+  // 열 때마다(대상이 바뀌거나 닫힐 때마다) 바뀌는 번호 — 늦게 온 결과가 다시 연 다른 시트를 건드리지 않게
+  const openSeq = useRef(0);
   const key = target ? `${target.type}:${target.id}` : null;
+  // 작성 중 = 사유를 골랐거나 설명을 적음. 폰 뒤로가기·취소·바깥 누름 전에 묻는다
+  // 보내는 중에는 묻지 않고, 시트를 닫는 폰 뒤로가기는 조용히 되돌린다(busy)
+  const guard = useLeaveGuard(key !== null && isDirty({ reason: null, note: "" }, { reason, note }), { busy: busy && key !== null });
+  const close = () => {
+    if (guard.isSending() || !guard.confirmLeave()) return;
+    onClose();
+  };
 
   useEffect(() => {
     mounted.current = true;
@@ -48,7 +59,13 @@ export function ReportSheet({ target, onClose }: { target: ReportTarget | null; 
 
   // 대상이 바뀌거나 다시 열면 입력을 비운다
   useEffect(() => {
-    if (!key) return;
+    openSeq.current++;
+    if (!key) {
+      // 닫히면 보내는 중 표시를 푼다(다시 열 때 보내는 중으로 시작하지 않게)
+      setBusy(false);
+      submitting.current = false;
+      return;
+    }
     setReason(null);
     setNote("");
     setFormError(null);
@@ -66,23 +83,27 @@ export function ReportSheet({ target, onClose }: { target: ReportTarget | null; 
     submitting.current = true;
     setBusy(true);
     setFormError(null);
+    const token = openSeq.current;
+    // 화면이 닫혔거나(역할 전환·로그아웃) 이 시트가 그 사이 닫혔거나 다른 대상으로 다시 열렸으면 안내만
+    const stale = () => !mounted.current || openSeq.current !== token;
     const res = await submitReport(target, reason, note);
     if (res.error) {
       toast.error(res.error);
-      if (!mounted.current) return; // 화면이 이미 닫혔으면(역할 전환·로그아웃) 안내만
+      if (stale()) return;
       setFormError(res.error);
       submitting.current = false;
       setBusy(false);
       return;
     }
     toast.success(REPORT_DONE_TEXT);
-    if (!mounted.current) return;
+    if (stale()) return;
+    guard.release(); // 보냈으니 닫을 때 묻지 않는다
     // 닫힐 때까지 busy 유지(이중 제출 방지)
     onClose();
   };
 
   return (
-    <Sheet open={target !== null} onOpenChange={(v) => !v && !busy && onClose()}>
+    <Sheet open={target !== null} onOpenChange={(v) => !v && close()}>
       <SheetContent side="bottom" className="mx-auto max-h-[90dvh] max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="text-left text-lg font-bold text-ink">{target ? reportSheetTitle(target.type) : "신고하기"}</SheetTitle>
@@ -124,7 +145,7 @@ export function ReportSheet({ target, onClose }: { target: ReportTarget | null; 
             </p>
 
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" className="h-[52px] border-line text-base" disabled={busy} onClick={onClose}>
+              <Button variant="outline" className="h-[52px] border-line text-base" disabled={busy} onClick={close}>
                 취소
               </Button>
               <Button className="h-[52px] bg-ink text-base text-white" disabled={busy} onClick={() => void submit()}>

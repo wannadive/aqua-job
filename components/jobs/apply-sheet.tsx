@@ -10,6 +10,8 @@ import { formatJobDates, formatPay } from "@/lib/jobs/logic";
 import type { JobSummary } from "@/lib/jobs/types";
 import { fetchMyInstructorProfile } from "@/lib/talent-profile/api";
 import { resumeCompleteness } from "@/lib/talent-profile/logic";
+import { isDirty } from "@/lib/navigation/dirty";
+import { useLeaveGuard } from "@/lib/navigation/use-navigable";
 
 export const APPLY_MESSAGE_MAX = 200;
 
@@ -32,12 +34,27 @@ export function ApplySheet({
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
+  // 열 때마다(대상이 바뀌거나 닫힐 때마다) 바뀌는 번호 — 늦게 온 결과가 다시 연 다른 시트를 건드리지 않게
+  const openSeq = useRef(0);
   const [missing, setMissing] = useState<string[] | null>(null);
   const [resumeError, setResumeError] = useState(false);
   const jobId = job?.id ?? null;
+  // 작성 중 = 한마디를 적음(열기만 한 건 아님). 폰 뒤로가기·취소·바깥 누름·이력서로 가기 전에 묻는다
+  // 보내는 중에는 묻지 않고, 시트를 닫는 폰 뒤로가기는 조용히 되돌린다(busy)
+  const guard = useLeaveGuard(jobId !== null && isDirty("", message), { busy: busy && jobId !== null });
+  const close = () => {
+    if (guard.isSending() || !guard.confirmLeave()) return;
+    onClose();
+  };
 
   useEffect(() => {
-    if (!jobId) return;
+    openSeq.current++;
+    if (!jobId) {
+      // 닫히면 보내는 중 표시를 푼다(다시 열 때 보내는 중으로 시작하지 않게)
+      setBusy(false);
+      submitting.current = false;
+      return;
+    }
     setMessage("");
     setBusy(false);
     submitting.current = false;
@@ -59,32 +76,47 @@ export function ApplySheet({
     if (!job || submitting.current) return;
     submitting.current = true;
     setBusy(true);
+    const token = openSeq.current;
+    // 이 시트가 그 사이 닫혔거나 다른 공고로 다시 열렸는가(그러면 결과 안내·목록 새로 고침만, 시트는 건드리지 않음)
+    const stale = () => openSeq.current !== token;
     const res = await applyToJob(job.id, message);
     if (res.error) {
       // 이미 마감·지원됨 등으로 바뀌었을 수 있다: 상태를 다시 불러오고 시트를 닫는다
       toast.error(res.error);
+      if (stale()) {
+        void onApplied();
+        return;
+      }
+      guard.release(); // 서버가 거절해 닫는다(이미 마감·지원됨 등) — 다시 묻지 않음
       try {
         await onApplied();
       } finally {
-        submitting.current = false;
-        setBusy(false);
-        onClose();
+        if (!stale()) {
+          submitting.current = false;
+          setBusy(false);
+          onClose();
+        }
       }
       return;
     }
     toast.success("지원했어요");
+    if (stale()) {
+      void onApplied();
+      return;
+    }
+    guard.release(); // 보냈으니 닫을 때 묻지 않는다
     // 성공하면 닫힐 때까지 busy 유지(이중 제출 방지). 새로 불러오다 실패해도 시트는 닫는다.
     try {
       await onApplied();
     } finally {
-      onClose();
+      if (!stale()) onClose();
     }
   };
 
   const dates = job ? formatJobDates(job) : "";
 
   return (
-    <Sheet open={job !== null} onOpenChange={(v) => !v && !busy && onClose()}>
+    <Sheet open={job !== null} onOpenChange={(v) => !v && close()}>
       <SheetContent side="bottom" className="mx-auto max-h-[90dvh] max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle className="text-left text-lg font-bold text-ink">이 공고에 지원할까요?</SheetTitle>
@@ -133,7 +165,9 @@ export function ApplySheet({
                 {onOpenResume && (
                   <button
                     type="button"
-                    onClick={onOpenResume}
+                    onClick={() => {
+                      if (guard.confirmLeave()) onOpenResume();
+                    }}
                     disabled={busy}
                     className="mt-2 flex h-11 items-center font-semibold underline"
                   >
@@ -145,7 +179,7 @@ export function ApplySheet({
             {resumeError && <p className="text-sm text-muted">이력서 상태를 불러오지 못했어요. 그래도 지원할 수 있어요.</p>}
 
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" className="h-[52px] border-line text-base" disabled={busy} onClick={onClose}>
+              <Button variant="outline" className="h-[52px] border-line text-base" disabled={busy} onClick={close}>
                 취소
               </Button>
               <Button className="h-[52px] bg-ink text-base text-white" disabled={busy} onClick={() => void submit()}>

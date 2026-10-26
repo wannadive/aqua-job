@@ -20,6 +20,7 @@ export function JobCard({
   dimmed = false,
   maxTags,
   onOpen,
+  mine = false,
 }: {
   job: JobSummary;
   /** 상태 꼬리표(내 공고 화면용) */
@@ -34,6 +35,8 @@ export function JobCard({
   maxTags?: number;
   /** 주면 카드 전체가 눌러 열린다(상세로) */
   onOpen?: () => void;
+  /** 보는 사람의 공고(겸용 계정) — "내 공고" 꼬리표 */
+  mine?: boolean;
 }) {
   const dates = formatJobDates(job);
   const tags = maxTags == null ? job.requirementTags : job.requirementTags.slice(0, maxTags);
@@ -60,6 +63,7 @@ export function JobCard({
             {JOB_STATUS_LABEL[job.status]}
           </span>
         )}
+        {mine && <span className="rounded-full bg-ink px-2.5 py-1 text-xs font-semibold text-white">내 공고</span>}
       </div>
       <h3 className="mt-2 text-lg font-bold leading-snug text-ink">{job.title}</h3>
       <p className="mt-0.5 text-sm text-muted">
